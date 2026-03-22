@@ -32,7 +32,7 @@ describe('Middleware', () => {
 
   app.use('/api/*', auth.middleware())
   app.get('/api/me', (c) => {
-    return c.json({ user: c.get('user'), auth: c.req.header('Authorization') })
+    return c.json({ user: c.get('user'), accessToken: c.get('accessToken') })
   })
 
   beforeEach(async () => {
@@ -84,7 +84,7 @@ describe('Middleware', () => {
     expect(res.status).toBe(200)
     const data = await res.json()
     expect(data.user).toEqual(user)
-    expect(data.auth).toBe('Bearer valid-token')
+    expect(data.accessToken).toBe('valid-token')
   })
 
   it('expired access token triggers refresh, updates KV, passes through', async () => {
@@ -118,7 +118,7 @@ describe('Middleware', () => {
 
     expect(res.status).toBe(200)
     const data = await res.json()
-    expect(data.auth).toBe('Bearer new-token')
+    expect(data.accessToken).toBe('new-token')
 
     // Check KV updated
     const stored = JSON.parse((await env.SESSION_KV.get(sessionId))!)
@@ -179,5 +179,36 @@ describe('Middleware', () => {
     })
 
     expect(res.status).toBe(401)
+  })
+
+  it('triggers refresh with 60s buffer', async () => {
+    const sessionId = 'test-session-id'
+    await env.SESSION_KV.put(
+      sessionId,
+      JSON.stringify({
+        accessToken: 'near-expiry-token',
+        refreshToken: 'valid-refresh',
+        expiresAt: Math.floor(Date.now() / 1000) + 30, // expires in 30s
+        user: { sub: '123' },
+      })
+    )
+
+    vi.mocked(oauth.refreshTokenGrantRequest).mockResolvedValue({} as Response)
+    vi.mocked(oauth.processRefreshTokenResponse).mockResolvedValue({
+      access_token: 'new-token',
+      expires_in: 3600,
+      token_type: 'bearer',
+    } as oauth.TokenEndpointResponse)
+    vi.mocked(oauth.validateJwtAccessToken).mockResolvedValue({} as oauth.JWTAccessTokenClaims)
+
+    const res = await app.request('/api/me', {
+      headers: {
+        Cookie: `sessionId=${sessionId}`,
+      },
+    })
+
+    expect(res.status).toBe(200)
+    const data = await res.json()
+    expect(data.accessToken).toBe('new-token')
   })
 })

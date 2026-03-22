@@ -4,7 +4,9 @@ import * as oauth from 'oauth4webapi'
 import { SessionStore, type Session } from './session'
 import type { BezzieConfig } from './index'
 
-export type Variables = { user: Session['user'] }
+export type Variables = { user: Session['user']; accessToken: string }
+
+const jwksCache: oauth.JWKSCacheInput = {}
 
 export function middleware(config: BezzieConfig): MiddlewareHandler<{ Variables: Variables }> {
   const sessionStore = new SessionStore(config.kv)
@@ -29,10 +31,11 @@ export function middleware(config: BezzieConfig): MiddlewareHandler<{ Variables:
     const as: oauth.AuthorizationServer = {
       issuer: `https://${config.domain}/`,
       jwks_uri: `https://${config.domain}/.well-known/jwks.json`,
+      token_endpoint: `https://${config.domain}/oauth/token`,
     }
 
-    // 5. Check if the access token is expired
-    if (session.expiresAt < Date.now() / 1000) {
+    // 5. Check if the access token is expired (with 60s buffer)
+    if (session.expiresAt < (Date.now() / 1000) + 60) {
       // 6. If expired → use oauth4webapi to perform a refresh token grant
       const client: oauth.Client = {
         client_id: config.clientId,
@@ -72,26 +75,15 @@ export function middleware(config: BezzieConfig): MiddlewareHandler<{ Variables:
         },
       })
 
-      await oauth.validateJwtAccessToken(as, mockReq, config.audience)
+      await oauth.validateJwtAccessToken(as, mockReq, config.audience, { [oauth.jwksCache]: jwksCache })
     } catch (error) {
       // 9. If JWT invalid → return 401
       return c.text('Unauthorized', 401)
     }
 
-    // 10. Attach the user to Hono context
+    // 10. Attach the user and accessToken to Hono context
     c.set('user', session.user)
-
-    // 11. Forward Authorization: Bearer <accessToken> header to upstream
-    // Note: In Cloudflare Workers, c.req.raw.headers is immutable if it's the original request.
-    // However, we can try to set it, or at least it should be documented.
-    // Some Hono versions/environments allow this if c.req.raw was cloned.
-    try {
-      c.req.raw.headers.set('Authorization', `Bearer ${session.accessToken}`)
-    } catch (e) {
-      // If immutable, we can't easily "forward" it by modifying the request object in-place
-      // without replacing the whole request in the context, which is not recommended in Hono.
-      // But we'll try as per instructions.
-    }
+    c.set('accessToken', session.accessToken)
 
     // 12. Call next()
     await next()

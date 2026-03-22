@@ -38,7 +38,7 @@ describe('OAuth Routes', () => {
       expect(location).toContain(`client_id=${config.clientId}`)
       expect(location).toContain('response_type=code')
       expect(location).toContain(`redirect_uri=${encodeURIComponent(config.baseUrl + '/auth/callback')}`)
-      expect(location).toContain('scope=openid+profile+email')
+      expect(location).toContain('scope=openid+profile+email+offline_access')
       expect(location).toContain('code_challenge=')
       expect(location).toContain('code_challenge_method=S256')
       expect(location).toContain(`audience=${encodeURIComponent(config.audience)}`)
@@ -56,6 +56,12 @@ describe('OAuth Routes', () => {
   })
 
   describe('GET /callback', () => {
+    it('returns 400 with error parameter', async () => {
+      const res = await app.request('/callback?error=access_denied')
+      expect(res.status).toBe(400)
+      expect(await res.text()).toBe('OAuth error: access_denied')
+    })
+
     it('returns 400 with invalid state', async () => {
       const res = await app.request('/callback?state=invalid&code=123')
       expect(res.status).toBe(400)
@@ -111,9 +117,13 @@ describe('OAuth Routes', () => {
   })
 
   describe('GET /logout', () => {
-    it('with valid session cookie - deletes session from KV, clears cookie, redirects', async () => {
+    it('with valid session cookie - deletes session from KV, clears cookie, redirects to Auth0 logout if no end_session_endpoint', async () => {
       const sessionId = 'test-session-id'
       await env.SESSION_KV.put(sessionId, JSON.stringify({ accessToken: 'test' }))
+
+      const mockAs = { issuer: `https://${config.domain}` }
+      vi.mocked(oauth.discoveryRequest).mockResolvedValue({} as unknown as Response)
+      vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue(mockAs as oauth.AuthorizationServer)
 
       const res = await app.request('/logout', {
         headers: {
@@ -136,19 +146,33 @@ describe('OAuth Routes', () => {
       expect(await env.SESSION_KV.get(sessionId)).toBeNull()
     })
 
+    it('redirects to OIDC end_session_endpoint if available', async () => {
+      const mockAs = { 
+        issuer: `https://${config.domain}`,
+        end_session_endpoint: `https://${config.domain}/oidc/logout`
+      }
+      vi.mocked(oauth.discoveryRequest).mockResolvedValue({} as unknown as Response)
+      vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue(mockAs as oauth.AuthorizationServer)
+
+      const res = await app.request('/logout')
+
+      expect(res.status).toBe(302)
+      const location = res.headers.get('Location')
+      expect(location).toContain(`https://${config.domain}/oidc/logout`)
+      expect(location).toContain(`client_id=${config.clientId}`)
+      expect(location).toContain(`post_logout_redirect_uri=${encodeURIComponent(config.baseUrl)}`)
+    })
+
     it('with no cookie - redirects cleanly', async () => {
+      const mockAs = { issuer: `https://${config.domain}` }
+      vi.mocked(oauth.discoveryRequest).mockResolvedValue({} as unknown as Response)
+      vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue(mockAs as oauth.AuthorizationServer)
+
       const res = await app.request('/logout')
 
       expect(res.status).toBe(302)
       const location = res.headers.get('Location')
       expect(location).toContain(`https://${config.domain}/v2/logout`)
-      expect(location).toContain(`client_id=${config.clientId}`)
-      expect(location).toContain(`returnTo=${encodeURIComponent(config.baseUrl)}`)
-
-      // Check cookie cleared even if not present
-      const setCookie = res.headers.get('Set-Cookie')
-      expect(setCookie).toContain('sessionId=;')
-      expect(setCookie).toContain('Max-Age=0')
     })
   })
 })

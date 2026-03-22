@@ -20,7 +20,7 @@ export function authRoutes(config: BezzieConfig) {
     authorizationUrl.searchParams.set('client_id', config.clientId)
     authorizationUrl.searchParams.set('response_type', 'code')
     authorizationUrl.searchParams.set('redirect_uri', `${config.baseUrl}/auth/callback`)
-    authorizationUrl.searchParams.set('scope', 'openid profile email')
+    authorizationUrl.searchParams.set('scope', 'openid profile email offline_access')
     authorizationUrl.searchParams.set('state', state)
     authorizationUrl.searchParams.set('code_challenge', code_challenge)
     authorizationUrl.searchParams.set('code_challenge_method', 'S256')
@@ -32,6 +32,10 @@ export function authRoutes(config: BezzieConfig) {
   })
 
   router.get('/callback', async (c) => {
+    const error = c.req.query('error')
+    if (error) {
+      return c.text(`OAuth error: ${error}`, 400)
+    }
     const state = c.req.query('state')
     const code = c.req.query('code')
 
@@ -84,9 +88,8 @@ export function authRoutes(config: BezzieConfig) {
       },
     }
 
-    // TTL for session in KV. If expires_in is not provided, default to 1 hour.
-    // In a real app, you might want this to be longer if using refresh tokens.
-    await sessionStore.set(sessionId, session, expires_in || 3600)
+    // TTL for session in KV. Set to 30 days as per bug fix 3.
+    await sessionStore.set(sessionId, session, 30 * 24 * 60 * 60)
 
     setCookie(c, 'sessionId', sessionId, {
       httpOnly: true,
@@ -109,9 +112,20 @@ export function authRoutes(config: BezzieConfig) {
       secure: true,
     })
 
-    const logoutUrl = new URL(`https://${config.domain}/v2/logout`)
-    logoutUrl.searchParams.set('client_id', config.clientId)
-    logoutUrl.searchParams.set('returnTo', config.baseUrl)
+    const as = await oauth
+      .discoveryRequest(new URL(`https://${config.domain}`))
+      .then((response) => oauth.processDiscoveryResponse(new URL(`https://${config.domain}`), response))
+
+    let logoutUrl: URL
+    if (as.end_session_endpoint) {
+      logoutUrl = new URL(as.end_session_endpoint)
+      logoutUrl.searchParams.set('client_id', config.clientId)
+      logoutUrl.searchParams.set('post_logout_redirect_uri', config.baseUrl)
+    } else {
+      logoutUrl = new URL(`https://${config.domain}/v2/logout`)
+      logoutUrl.searchParams.set('client_id', config.clientId)
+      logoutUrl.searchParams.set('returnTo', config.baseUrl)
+    }
 
     return c.redirect(logoutUrl.toString())
   })
