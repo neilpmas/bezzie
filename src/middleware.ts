@@ -1,7 +1,7 @@
 import { type MiddlewareHandler } from 'hono'
 import { getCookie } from 'hono/cookie'
 import * as oauth from 'oauth4webapi'
-import { SessionStore, type Session } from './session'
+import { type Session } from './session'
 import type { BezzieConfig } from './index'
 
 export type Variables = { user: Session['user']; accessToken: string }
@@ -9,7 +9,7 @@ export type Variables = { user: Session['user']; accessToken: string }
 const jwksCache: oauth.JWKSCacheInput = {}
 
 export function middleware(config: BezzieConfig): MiddlewareHandler<{ Variables: Variables }> {
-  const sessionStore = new SessionStore(config.kv)
+  const sessionStore = config.adapter
 
   return async (c, next) => {
     // 1. Read the sessionId cookie from the request

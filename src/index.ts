@@ -2,13 +2,19 @@ import { Hono, type MiddlewareHandler } from 'hono'
 import { authRoutes } from './routes'
 import { middleware, type Variables } from './middleware'
 
+import { CloudflareKVAdapter, type SessionAdapter } from './session'
+
 export interface BezzieConfig {
   domain: string
   clientId: string
   clientSecret: string
   audience: string
-  kv: KVNamespace
+  adapter: SessionAdapter
   baseUrl: string
+}
+
+function cloudflareKV(kv: KVNamespace): SessionAdapter {
+  return new CloudflareKVAdapter(kv)
 }
 
 export interface Bezzie {
@@ -16,7 +22,14 @@ export interface Bezzie {
   middleware: () => MiddlewareHandler<{ Variables: Variables }>
 }
 
-export function createBezzie(config: BezzieConfig): Bezzie {
+function createBezzie(config: BezzieConfig): Bezzie {
+  const required = ['domain', 'clientId', 'clientSecret', 'adapter', 'baseUrl']
+  for (const key of required) {
+    if (!config[key as keyof BezzieConfig]) {
+      throw new Error(`Bezzie: missing required config: ${key}`)
+    }
+  }
+
   const router = authRoutes(config)
 
   return {
@@ -24,3 +37,7 @@ export function createBezzie(config: BezzieConfig): Bezzie {
     middleware: () => middleware(config),
   }
 }
+
+export { createBezzie, cloudflareKV }
+export type { BezzieConfig, SessionAdapter }
+export { CloudflareKVAdapter, RedisAdapter, MemoryAdapter } from './session'

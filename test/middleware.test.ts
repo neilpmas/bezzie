@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { env } from 'cloudflare:test'
 import { Hono } from 'hono'
-import { createBezzie } from '../src/index'
+import { createBezzie, MemoryAdapter } from '../src/index'
 import * as oauth from 'oauth4webapi'
 
 // Mock oauth4webapi
@@ -18,30 +17,29 @@ vi.mock('oauth4webapi', async () => {
 })
 
 describe('Middleware', () => {
-  const config = {
-    domain: 'test.auth0.com',
-    clientId: 'test-client-id',
-    clientSecret: 'test-client-secret',
-    audience: 'https://api.test.com',
-    kv: env.SESSION_KV,
-    baseUrl: 'https://app.test.com',
-  }
-
-  const auth = createBezzie(config)
-  const app = new Hono()
-
-  app.use('/api/*', auth.middleware())
-  app.get('/api/me', (c) => {
-    return c.json({ user: c.get('user'), accessToken: c.get('accessToken') })
-  })
+  let adapter: MemoryAdapter
+  let auth: any
+  let app: Hono
 
   beforeEach(async () => {
     vi.clearAllMocks()
-    // Clear KV
-    const keys = await env.SESSION_KV.list()
-    for (const key of keys.keys) {
-      await env.SESSION_KV.delete(key.name)
+    adapter = new MemoryAdapter()
+    const config = {
+      domain: 'test.auth0.com',
+      clientId: 'test-client-id',
+      clientSecret: 'test-client-secret',
+      audience: 'https://api.test.com',
+      adapter,
+      baseUrl: 'https://app.test.com',
     }
+
+    auth = createBezzie(config)
+    app = new Hono()
+
+    app.use('/api/*', auth.middleware())
+    app.get('/api/me', (c) => {
+      return c.json({ user: c.get('user'), accessToken: c.get('accessToken') })
+    })
   })
 
   it('returns 401 with no cookie', async () => {
@@ -62,14 +60,15 @@ describe('Middleware', () => {
   it('valid session passes through and sets user on context', async () => {
     const sessionId = 'test-session-id'
     const user = { sub: 'user-123', email: 'user@example.com' }
-    await env.SESSION_KV.put(
+    await adapter.set(
       sessionId,
-      JSON.stringify({
+      {
         accessToken: 'valid-token',
         refreshToken: 'valid-refresh',
         expiresAt: Math.floor(Date.now() / 1000) + 3600,
         user,
-      })
+      },
+      3600
     )
 
     // Mock successful JWT validation
@@ -90,14 +89,15 @@ describe('Middleware', () => {
   it('expired access token triggers refresh, updates KV, passes through', async () => {
     const sessionId = 'test-session-id'
     const user = { sub: 'user-123' }
-    await env.SESSION_KV.put(
+    await adapter.set(
       sessionId,
-      JSON.stringify({
+      {
         accessToken: 'expired-token',
         refreshToken: 'valid-refresh',
         expiresAt: Math.floor(Date.now() / 1000) - 10, // expired 10s ago
         user,
-      })
+      },
+      86400
     )
 
     // Mock successful refresh
@@ -120,8 +120,8 @@ describe('Middleware', () => {
     const data = await res.json()
     expect(data.accessToken).toBe('new-token')
 
-    // Check KV updated
-    const stored = JSON.parse((await env.SESSION_KV.get(sessionId))!)
+    // Check adapter updated
+    const stored = (await adapter.get(sessionId))!
     expect(stored.accessToken).toBe('new-token')
     expect(stored.refreshToken).toBe('new-refresh')
     expect(stored.expiresAt).toBeGreaterThan(Date.now() / 1000)
@@ -129,14 +129,15 @@ describe('Middleware', () => {
 
   it('failed refresh deletes session and returns 401', async () => {
     const sessionId = 'test-session-id'
-    await env.SESSION_KV.put(
+    await adapter.set(
       sessionId,
-      JSON.stringify({
+      {
         accessToken: 'expired-token',
         refreshToken: 'invalid-refresh',
         expiresAt: Math.floor(Date.now() / 1000) - 10,
         user: { sub: '123' },
-      })
+      },
+      3600
     )
 
     // Mock failed refresh
@@ -154,19 +155,20 @@ describe('Middleware', () => {
     expect(res.status).toBe(401)
     
     // Check session deleted
-    expect(await env.SESSION_KV.get(sessionId)).toBeNull()
+    expect(await adapter.get(sessionId)).toBeNull()
   })
 
   it('invalid JWT returns 401', async () => {
     const sessionId = 'test-session-id'
-    await env.SESSION_KV.put(
+    await adapter.set(
       sessionId,
-      JSON.stringify({
+      {
         accessToken: 'invalid-jwt',
         refreshToken: 'refresh',
         expiresAt: Math.floor(Date.now() / 1000) + 3600,
         user: { sub: '123' },
-      })
+      },
+      3600
     )
 
     // Mock JWT validation failure
@@ -183,14 +185,15 @@ describe('Middleware', () => {
 
   it('triggers refresh with 60s buffer', async () => {
     const sessionId = 'test-session-id'
-    await env.SESSION_KV.put(
+    await adapter.set(
       sessionId,
-      JSON.stringify({
+      {
         accessToken: 'near-expiry-token',
         refreshToken: 'valid-refresh',
         expiresAt: Math.floor(Date.now() / 1000) + 30, // expires in 30s
         user: { sub: '123' },
-      })
+      },
+      3600
     )
 
     vi.mocked(oauth.refreshTokenGrantRequest).mockResolvedValue({} as Response)

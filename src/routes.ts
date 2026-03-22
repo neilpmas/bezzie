@@ -1,20 +1,38 @@
 import { Hono } from 'hono'
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
 import * as oauth from 'oauth4webapi'
+import { type Session } from './session'
 import type { BezzieConfig } from './index'
-import { SessionStore, type Session } from './session'
+
+let cachedAS: oauth.AuthorizationServer | null = null
+let cacheExpiresAt = 0
+
+async function getAuthorizationServer(domain: string): Promise<oauth.AuthorizationServer> {
+  if (cachedAS && Date.now() < cacheExpiresAt) return cachedAS
+  const response = await oauth.discoveryRequest(new URL(`https://${domain}`))
+  cachedAS = await oauth.processDiscoveryResponse(new URL(`https://${domain}`), response)
+  cacheExpiresAt = Date.now() + 60 * 60 * 1000 // 1 hour
+  return cachedAS
+}
+
+export function _resetDiscoveryCache() {
+  cachedAS = null
+  cacheExpiresAt = 0
+}
 
 export function authRoutes(config: BezzieConfig) {
   const router = new Hono()
-  const sessionStore = new SessionStore(config.kv)
+  const sessionStore = config.adapter
 
   router.get('/login', async (c) => {
     const code_verifier = oauth.generateRandomCodeVerifier()
     const code_challenge = await oauth.calculatePKCECodeChallenge(code_verifier)
     const state = oauth.generateRandomState()
 
-    // Store state and codeVerifier in KV
-    await config.kv.put(`pkce:${state}`, code_verifier, { expirationTtl: 600 }) // 10 minutes
+    const returnTo = c.req.query('returnTo')
+
+    // Store state and codeVerifier in adapter
+    await config.adapter.set(`pkce:${state}`, { codeVerifier: code_verifier, returnTo } as any, 600) // 10 minutes
 
     const authorizationUrl = new URL(`https://${config.domain}/authorize`)
     authorizationUrl.searchParams.set('client_id', config.clientId)
@@ -43,16 +61,15 @@ export function authRoutes(config: BezzieConfig) {
       return c.text('Missing state or code', 400)
     }
 
-    const codeVerifier = await config.kv.get(`pkce:${state}`)
-    if (!codeVerifier) {
+    const stored = (await config.adapter.get(`pkce:${state}`)) as any
+    if (!stored) {
       return c.text('Invalid or expired state', 400)
     }
+    const { codeVerifier, returnTo } = stored
 
-    await config.kv.delete(`pkce:${state}`)
+    await config.adapter.delete(`pkce:${state}`)
 
-    const as = await oauth
-      .discoveryRequest(new URL(`https://${config.domain}`))
-      .then((response) => oauth.processDiscoveryResponse(new URL(`https://${config.domain}`), response))
+    const as = await getAuthorizationServer(config.domain)
 
     const client: oauth.Client = {
       client_id: config.clientId,
@@ -98,6 +115,10 @@ export function authRoutes(config: BezzieConfig) {
       path: '/',
     })
 
+    if (returnTo && returnTo.startsWith('/') && !returnTo.startsWith('//')) {
+      return c.redirect(returnTo)
+    }
+
     return c.redirect('/')
   })
 
@@ -112,9 +133,7 @@ export function authRoutes(config: BezzieConfig) {
       secure: true,
     })
 
-    const as = await oauth
-      .discoveryRequest(new URL(`https://${config.domain}`))
-      .then((response) => oauth.processDiscoveryResponse(new URL(`https://${config.domain}`), response))
+    const as = await getAuthorizationServer(config.domain)
 
     let logoutUrl: URL
     if (as.end_session_endpoint) {

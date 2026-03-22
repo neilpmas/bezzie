@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
-import { env } from 'cloudflare:test'
-import { createBezzie } from '../src/index'
+import { createBezzie, MemoryAdapter } from '../src/index'
+import { _resetDiscoveryCache } from '../src/routes'
 import * as oauth from 'oauth4webapi'
 
 // Mock oauth4webapi
@@ -17,12 +17,13 @@ vi.mock('oauth4webapi', async () => {
 })
 
 describe('OAuth Routes', () => {
+  const adapter = new MemoryAdapter()
   const config = {
     domain: 'test.auth0.com',
     clientId: 'test-client-id',
     clientSecret: 'test-client-secret',
     audience: 'https://api.test.com',
-    kv: env.SESSION_KV,
+    adapter,
     baseUrl: 'https://app.test.com',
   }
 
@@ -44,14 +45,23 @@ describe('OAuth Routes', () => {
       expect(location).toContain(`audience=${encodeURIComponent(config.audience)}`)
     })
 
-    it('stores PKCE state in KV', async () => {
+    it('stores PKCE state in adapter', async () => {
       const res = await app.request('/login')
       const location = new URL(res.headers.get('Location')!)
       const state = location.searchParams.get('state')
-      
-      const storedVerifier = await env.SESSION_KV.get(`pkce:${state}`)
-      expect(storedVerifier).toBeDefined()
-      expect(typeof storedVerifier).toBe('string')
+
+      const stored = await adapter.get(`pkce:${state}`) as any
+      expect(stored).toBeDefined()
+      expect(typeof stored.codeVerifier).toBe('string')
+    })
+
+    it('stores returnTo in PKCE state if provided', async () => {
+      const res = await app.request('/login?returnTo=/dashboard')
+      const location = new URL(res.headers.get('Location')!)
+      const state = location.searchParams.get('state')
+
+      const stored = await adapter.get(`pkce:${state}`) as any
+      expect(stored.returnTo).toBe('/dashboard')
     })
   })
 
@@ -73,7 +83,7 @@ describe('OAuth Routes', () => {
       const code = 'test-code'
       const codeVerifier = 'test-verifier'
       
-      await env.SESSION_KV.put(`pkce:${state}`, codeVerifier)
+      await adapter.set(`pkce:${state}`, { codeVerifier } as any, 600)
 
       // Setup mocks
       const mockAs = { issuer: `https://${config.domain}` }
@@ -103,23 +113,77 @@ describe('OAuth Routes', () => {
       expect(cookie).toContain('Secure')
       expect(cookie).toContain('SameSite=Strict')
 
-      // Check session in KV
+      // Check session in adapter
       const sessionId = cookie!.match(/sessionId=([^;]+)/)![1]
-      const sessionJson = await env.SESSION_KV.get(sessionId)
-      expect(sessionJson).toBeDefined()
-      const session = JSON.parse(sessionJson!)
-      expect(session.accessToken).toBe('mock-access-token')
-      expect(session.user.sub).toBe('user-123')
+      const session = await adapter.get(sessionId)
+      expect(session).toBeDefined()
+      expect(session!.accessToken).toBe('mock-access-token')
+      expect(session!.user.sub).toBe('user-123')
 
-      // Check PKCE state deleted
-      expect(await env.SESSION_KV.get(`pkce:${state}`)).toBeNull()
+      expect(await adapter.get(`pkce:${state}`)).toBeNull()
+    })
+
+    it('redirects to returnTo after successful login', async () => {
+      const state = 'test-state-ret'
+      const code = 'test-code'
+      const codeVerifier = 'test-verifier'
+      const returnTo = '/dashboard'
+      
+      await adapter.set(`pkce:${state}`, { codeVerifier, returnTo } as any, 600)
+
+      // Setup mocks
+      const mockAs = { issuer: `https://${config.domain}` }
+      vi.mocked(oauth.discoveryRequest).mockResolvedValue({} as unknown as Response)
+      vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue(mockAs as oauth.AuthorizationServer)
+      vi.mocked(oauth.authorizationCodeGrantRequest).mockResolvedValue({} as unknown as Response)
+      vi.mocked(oauth.processAuthorizationCodeOpenIDResponse).mockResolvedValue({
+        access_token: 'mock-access-token',
+        expires_in: 3600,
+        id_token: 'mock-id-token',
+      } as oauth.OpenIDTokenEndpointResponse)
+      vi.mocked(oauth.getValidatedIdTokenClaims).mockReturnValue({
+        sub: 'user-123',
+      } as oauth.IDTokenClaims)
+
+      const res = await app.request(`/callback?state=${state}&code=${code}`)
+
+      expect(res.status).toBe(302)
+      expect(res.headers.get('Location')).toBe('/dashboard')
+    })
+
+    it('rejects external returnTo and falls back to /', async () => {
+      const state = 'test-state-evil'
+      const code = 'test-code'
+      const codeVerifier = 'test-verifier'
+      const returnTo = 'https://evil.com/malicious'
+      
+      await adapter.set(`pkce:${state}`, { codeVerifier, returnTo } as any, 600)
+
+      const res = await app.request(`/callback?state=${state}&code=${code}`)
+
+      expect(res.status).toBe(302)
+      expect(res.headers.get('Location')).toBe('/')
+    })
+
+    it('rejects protocol-relative returnTo (//) and falls back to /', async () => {
+      const state = 'test-state-proto'
+      const code = 'test-code'
+      const codeVerifier = 'test-verifier'
+      const returnTo = '//evil.com'
+      
+      await adapter.set(`pkce:${state}`, { codeVerifier, returnTo } as any, 600)
+
+      const res = await app.request(`/callback?state=${state}&code=${code}`)
+
+      expect(res.status).toBe(302)
+      expect(res.headers.get('Location')).toBe('/')
     })
   })
 
   describe('GET /logout', () => {
-    it('with valid session cookie - deletes session from KV, clears cookie, redirects to Auth0 logout if no end_session_endpoint', async () => {
+    it('with valid session cookie - deletes session from adapter, clears cookie, redirects to Auth0 logout if no end_session_endpoint', async () => {
       const sessionId = 'test-session-id'
-      await env.SESSION_KV.put(sessionId, JSON.stringify({ accessToken: 'test' }))
+      await adapter.set(sessionId, { accessToken: 'test' } as any, 3600)
 
       const mockAs = { issuer: `https://${config.domain}` }
       vi.mocked(oauth.discoveryRequest).mockResolvedValue({} as unknown as Response)
@@ -142,11 +206,13 @@ describe('OAuth Routes', () => {
       expect(setCookie).toContain('sessionId=;')
       expect(setCookie).toContain('Max-Age=0')
 
-      // Check session deleted from KV
-      expect(await env.SESSION_KV.get(sessionId)).toBeNull()
+      // Check session deleted from adapter
+      expect(await adapter.get(sessionId)).toBeNull()
     })
 
     it('redirects to OIDC end_session_endpoint if available', async () => {
+      _resetDiscoveryCache()
+
       const mockAs = { 
         issuer: `https://${config.domain}`,
         end_session_endpoint: `https://${config.domain}/oidc/logout`
@@ -164,6 +230,8 @@ describe('OAuth Routes', () => {
     })
 
     it('with no cookie - redirects cleanly', async () => {
+      _resetDiscoveryCache()
+
       const mockAs = { issuer: `https://${config.domain}` }
       vi.mocked(oauth.discoveryRequest).mockResolvedValue({} as unknown as Response)
       vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue(mockAs as oauth.AuthorizationServer)
