@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { createBezzie, MemoryAdapter } from '../src/index'
+import { createBezzie, MemoryAdapter, type BezzieConfig } from '../src/index'
 
 describe('createBezzie', () => {
   it('returns an object with routes and middleware', () => {
@@ -35,15 +35,15 @@ describe('createBezzie', () => {
   it('throws an error if a required config field is missing', () => {
     const required = ['domain', 'clientId', 'clientSecret', 'adapter', 'baseUrl']
     for (const key of required) {
-      const config: any = {
+      const config: Partial<BezzieConfig> = {
         domain: 'test.auth0.com',
         clientId: 'test-client-id',
         clientSecret: 'test-client-secret',
         adapter: new MemoryAdapter(),
         baseUrl: 'https://app.test.com',
       }
-      delete config[key]
-      expect(() => createBezzie(config)).toThrow(`Bezzie: missing required config: ${key}`)
+      delete config[key as keyof BezzieConfig]
+      expect(() => createBezzie(config as BezzieConfig)).toThrow(`Bezzie: missing required config: ${key}`)
     }
   })
 })

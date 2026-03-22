@@ -1,15 +1,15 @@
 import { Session } from '../session'
-import { SessionAdapter } from './types'
+import { SessionAdapter, PKCEState } from './types'
 
 interface MemorySession {
-  session: Session
+  session: Session | PKCEState
   expiresAt: number
 }
 
 export class MemoryAdapter implements SessionAdapter {
   private store = new Map<string, MemorySession>()
 
-  async get(sessionId: string): Promise<Session | null> {
+  async get(sessionId: string): Promise<Session | PKCEState | null> {
     const entry = this.store.get(sessionId)
     if (!entry) return null
     if (Date.now() > entry.expiresAt) {
@@ -19,7 +19,7 @@ export class MemoryAdapter implements SessionAdapter {
     return entry.session
   }
 
-  async set(sessionId: string, session: Session, ttlSeconds: number): Promise<void> {
+  async set(sessionId: string, session: Session | PKCEState, ttlSeconds: number): Promise<void> {
     this.store.set(sessionId, {
       session,
       expiresAt: Date.now() + ttlSeconds * 1000,

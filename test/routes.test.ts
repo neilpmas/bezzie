@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { createBezzie, MemoryAdapter } from '../src/index'
+import { createBezzie, MemoryAdapter, type PKCEState, type Session } from '../src/index'
 import { _resetDiscoveryCache } from '../src/routes'
 import * as oauth from 'oauth4webapi'
 
@@ -50,7 +50,7 @@ describe('OAuth Routes', () => {
       const location = new URL(res.headers.get('Location')!)
       const state = location.searchParams.get('state')
 
-      const stored = await adapter.get(`pkce:${state}`) as any
+      const stored = await adapter.get(`pkce:${state}`) as PKCEState
       expect(stored).toBeDefined()
       expect(typeof stored.codeVerifier).toBe('string')
     })
@@ -60,7 +60,7 @@ describe('OAuth Routes', () => {
       const location = new URL(res.headers.get('Location')!)
       const state = location.searchParams.get('state')
 
-      const stored = await adapter.get(`pkce:${state}`) as any
+      const stored = await adapter.get(`pkce:${state}`) as PKCEState
       expect(stored.returnTo).toBe('/dashboard')
     })
   })
@@ -83,7 +83,7 @@ describe('OAuth Routes', () => {
       const code = 'test-code'
       const codeVerifier = 'test-verifier'
       
-      await adapter.set(`pkce:${state}`, { codeVerifier } as any, 600)
+      await adapter.set(`pkce:${state}`, { codeVerifier } as PKCEState, 600)
 
       // Setup mocks
       const mockAs = { issuer: `https://${config.domain}` }
@@ -115,7 +115,7 @@ describe('OAuth Routes', () => {
 
       // Check session in adapter
       const sessionId = cookie!.match(/sessionId=([^;]+)/)![1]
-      const session = await adapter.get(sessionId)
+      const session = await adapter.get(sessionId) as Session
       expect(session).toBeDefined()
       expect(session!.accessToken).toBe('mock-access-token')
       expect(session!.user.sub).toBe('user-123')
@@ -129,7 +129,7 @@ describe('OAuth Routes', () => {
       const codeVerifier = 'test-verifier'
       const returnTo = '/dashboard'
       
-      await adapter.set(`pkce:${state}`, { codeVerifier, returnTo } as any, 600)
+      await adapter.set(`pkce:${state}`, { codeVerifier, returnTo } as PKCEState, 600)
 
       // Setup mocks
       const mockAs = { issuer: `https://${config.domain}` }
@@ -157,7 +157,7 @@ describe('OAuth Routes', () => {
       const codeVerifier = 'test-verifier'
       const returnTo = 'https://evil.com/malicious'
       
-      await adapter.set(`pkce:${state}`, { codeVerifier, returnTo } as any, 600)
+      await adapter.set(`pkce:${state}`, { codeVerifier, returnTo } as PKCEState, 600)
 
       const res = await app.request(`/callback?state=${state}&code=${code}`)
 
@@ -171,7 +171,7 @@ describe('OAuth Routes', () => {
       const codeVerifier = 'test-verifier'
       const returnTo = '//evil.com'
       
-      await adapter.set(`pkce:${state}`, { codeVerifier, returnTo } as any, 600)
+      await adapter.set(`pkce:${state}`, { codeVerifier, returnTo } as PKCEState, 600)
 
       const res = await app.request(`/callback?state=${state}&code=${code}`)
 
@@ -183,7 +183,7 @@ describe('OAuth Routes', () => {
   describe('GET /logout', () => {
     it('with valid session cookie - deletes session from adapter, clears cookie, redirects to Auth0 logout if no end_session_endpoint', async () => {
       const sessionId = 'test-session-id'
-      await adapter.set(sessionId, { accessToken: 'test' } as any, 3600)
+      await adapter.set(sessionId, { accessToken: 'test' } as Session, 3600)
 
       const mockAs = { issuer: `https://${config.domain}` }
       vi.mocked(oauth.discoveryRequest).mockResolvedValue({} as unknown as Response)

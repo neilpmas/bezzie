@@ -8,7 +8,7 @@ export interface BezzieConfig {
   domain: string
   clientId: string
   clientSecret: string
-  audience: string
+  audience?: string
   adapter: SessionAdapter
   baseUrl: string
 }
@@ -39,5 +39,6 @@ function createBezzie(config: BezzieConfig): Bezzie {
 }
 
 export { createBezzie, cloudflareKV }
-export type { BezzieConfig, SessionAdapter }
+export type { BezzieConfig }
+export type { SessionAdapter, PKCEState, Session } from './session'
 export { CloudflareKVAdapter, RedisAdapter, MemoryAdapter } from './session'

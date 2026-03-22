@@ -58,7 +58,7 @@ export function middleware(config: BezzieConfig): MiddlewareHandler<{ Variables:
         }
         session.expiresAt = Math.floor(Date.now() / 1000) + (result.expires_in || 3600)
 
-        await sessionStore.set(sessionId, session, result.refresh_token_expires_in || 86400) // Default to 1 day if not provided
+        await sessionStore.set(sessionId, session, 30 * 24 * 60 * 60) // 30 days, matches initial session TTL
       } catch (error) {
         // 7. If refresh fails → delete the session from KV, return 401
         await sessionStore.delete(sessionId)
@@ -75,7 +75,7 @@ export function middleware(config: BezzieConfig): MiddlewareHandler<{ Variables:
         },
       })
 
-      await oauth.validateJwtAccessToken(as, mockReq, config.audience, { [oauth.jwksCache]: jwksCache })
+      await oauth.validateJwtAccessToken(as, mockReq, config.audience ?? '', { [oauth.jwksCache]: jwksCache })
     } catch (error) {
       // 9. If JWT invalid → return 401
       return c.text('Unauthorized', 401)

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { Hono } from 'hono'
-import { createBezzie, MemoryAdapter } from '../src/index'
+import { createBezzie, MemoryAdapter, type Bezzie } from '../src/index'
 import * as oauth from 'oauth4webapi'
 
 // Mock oauth4webapi
@@ -18,7 +18,7 @@ vi.mock('oauth4webapi', async () => {
 
 describe('Middleware', () => {
   let adapter: MemoryAdapter
-  let auth: any
+  let auth: Bezzie
   let app: Hono
 
   beforeEach(async () => {

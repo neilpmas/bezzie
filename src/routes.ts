@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
 import * as oauth from 'oauth4webapi'
 import { type Session } from './session'
+import { type PKCEState } from './adapters/types'
 import type { BezzieConfig } from './index'
 
 let cachedAS: oauth.AuthorizationServer | null = null
@@ -32,7 +33,7 @@ export function authRoutes(config: BezzieConfig) {
     const returnTo = c.req.query('returnTo')
 
     // Store state and codeVerifier in adapter
-    await config.adapter.set(`pkce:${state}`, { codeVerifier: code_verifier, returnTo } as any, 600) // 10 minutes
+    await config.adapter.set(`pkce:${state}`, { codeVerifier: code_verifier, returnTo } as PKCEState, 600) // 10 minutes
 
     const authorizationUrl = new URL(`https://${config.domain}/authorize`)
     authorizationUrl.searchParams.set('client_id', config.clientId)
@@ -61,7 +62,7 @@ export function authRoutes(config: BezzieConfig) {
       return c.text('Missing state or code', 400)
     }
 
-    const stored = (await config.adapter.get(`pkce:${state}`)) as any
+    const stored = await config.adapter.get(`pkce:${state}`) as PKCEState
     if (!stored) {
       return c.text('Invalid or expired state', 400)
     }
