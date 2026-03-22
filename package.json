@@ -1,5 +1,5 @@
 {
-  "name": "portcullis",
+  "name": "bezzie",
   "version": "0.1.0",
   "description": "BFF OAuth 2.0 auth library for Cloudflare Workers",
   "main": "dist/index.js",
@@ -7,7 +7,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/neilpmas/portcullis"
+    "url": "https://github.com/neilpmas/bezzie"
   },
   "scripts": {
     "dev": "wrangler dev",

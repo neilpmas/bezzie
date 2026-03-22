@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { createPortcullis } from '../src/index'
+import { createBezzie } from '../src/index'
 
-describe('createPortcullis', () => {
+describe('createBezzie', () => {
   it('returns an object with routes and middleware', () => {
-    const auth = createPortcullis({
+    const auth = createBezzie({
       domain: 'test.auth0.com',
       clientId: 'test-client-id',
       clientSecret: 'test-client-secret',
@@ -17,7 +17,7 @@ describe('createPortcullis', () => {
   })
 
   it('routes() returns a Hono instance', () => {
-    const auth = createPortcullis({
+    const auth = createBezzie({
       domain: 'test.auth0.com',
       clientId: 'test-client-id',
       clientSecret: 'test-client-secret',

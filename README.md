@@ -1,18 +1,18 @@
-# Portcullis
+# Bezzie
 
 A BFF (Backend for Frontend) OAuth 2.0 auth library for Cloudflare Workers.
 
 Implements the [OAuth 2.0 for Browser-Based Apps (BCP212)](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-browser-based-apps) pattern — JWTs never touch the browser. The BFF owns the OAuth flow and issues a session cookie to the frontend instead.
 
 ```
-npm install portcullis
+npm install bezzie
 ```
 
 ---
 
 ## Why
 
-Most OAuth libraries hand tokens directly to the browser. BCP212 says you shouldn't — it's a significant attack surface. Portcullis keeps tokens server-side in Cloudflare KV and gives the browser a session cookie instead.
+Most OAuth libraries hand tokens directly to the browser. BCP212 says you shouldn't — it's a significant attack surface. Bezzie keeps tokens server-side in Cloudflare KV and gives the browser a session cookie instead.
 
 There's no open source library for this specific combination (BFF OAuth on Cloudflare Workers). The closest alternatives are Duende BFF (.NET) and `@auth0/nextjs-auth0` — both tied to specific frameworks.
 
@@ -21,9 +21,9 @@ There's no open source library for this specific combination (BFF OAuth on Cloud
 ## Usage
 
 ```typescript
-import { createPortcullis } from 'portcullis'
+import { createBezzie } from 'bezzie'
 
-const auth = createPortcullis({
+const auth = createBezzie({
   domain: 'your-tenant.auth0.com',
   clientId: 'xxx',
   clientSecret: env.AUTH0_CLIENT_SECRET,

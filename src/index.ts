@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 
-export interface PortcullisConfig {
+export interface BezzieConfig {
   domain: string
   clientId: string
   clientSecret: string
@@ -9,12 +9,12 @@ export interface PortcullisConfig {
   baseUrl: string
 }
 
-export interface Portcullis {
+export interface Bezzie {
   routes: () => Hono
   middleware: () => (c: unknown, next: () => Promise<void>) => Promise<void>
 }
 
-export function createPortcullis(_config: PortcullisConfig): Portcullis {
+export function createBezzie(_config: BezzieConfig): Bezzie {
   const router = new Hono()
 
   return {
