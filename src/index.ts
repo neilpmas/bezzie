@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { authRoutes } from './routes'
 
 export interface BezzieConfig {
   domain: string
@@ -14,8 +15,8 @@ export interface Bezzie {
   middleware: () => (c: unknown, next: () => Promise<void>) => Promise<void>
 }
 
-export function createBezzie(_config: BezzieConfig): Bezzie {
-  const router = new Hono()
+export function createBezzie(config: BezzieConfig): Bezzie {
+  const router = authRoutes(config)
 
   return {
     routes: () => router,

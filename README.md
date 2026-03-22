@@ -1,5 +1,7 @@
 # Bezzie
 
+**Bezzie** — your BFF's BFF. Handles the Backend for Frontend OAuth pattern so you don't have to.
+
 A BFF (Backend for Frontend) OAuth 2.0 auth library for Cloudflare Workers.
 
 Implements the [OAuth 2.0 for Browser-Based Apps (BCP212)](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-browser-based-apps) pattern — JWTs never touch the browser. The BFF owns the OAuth flow and issues a session cookie to the frontend instead.
