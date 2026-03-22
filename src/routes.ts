@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { setCookie } from 'hono/cookie'
+import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
 import * as oauth from 'oauth4webapi'
 import type { BezzieConfig } from './index'
 import { SessionStore, type Session } from './session'
@@ -96,6 +96,24 @@ export function authRoutes(config: BezzieConfig) {
     })
 
     return c.redirect('/')
+  })
+
+  router.get('/logout', async (c) => {
+    const sessionId = getCookie(c, 'sessionId')
+    if (sessionId) {
+      await sessionStore.delete(sessionId)
+    }
+
+    deleteCookie(c, 'sessionId', {
+      path: '/',
+      secure: true,
+    })
+
+    const logoutUrl = new URL(`https://${config.domain}/v2/logout`)
+    logoutUrl.searchParams.set('client_id', config.clientId)
+    logoutUrl.searchParams.set('returnTo', config.baseUrl)
+
+    return c.redirect(logoutUrl.toString())
   })
 
   return router

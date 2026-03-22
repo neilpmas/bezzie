@@ -109,4 +109,46 @@ describe('OAuth Routes', () => {
       expect(await env.SESSION_KV.get(`pkce:${state}`)).toBeNull()
     })
   })
+
+  describe('GET /logout', () => {
+    it('with valid session cookie - deletes session from KV, clears cookie, redirects', async () => {
+      const sessionId = 'test-session-id'
+      await env.SESSION_KV.put(sessionId, JSON.stringify({ accessToken: 'test' }))
+
+      const res = await app.request('/logout', {
+        headers: {
+          Cookie: `sessionId=${sessionId}`,
+        },
+      })
+
+      expect(res.status).toBe(302)
+      const location = res.headers.get('Location')
+      expect(location).toContain(`https://${config.domain}/v2/logout`)
+      expect(location).toContain(`client_id=${config.clientId}`)
+      expect(location).toContain(`returnTo=${encodeURIComponent(config.baseUrl)}`)
+
+      // Check cookie cleared
+      const setCookie = res.headers.get('Set-Cookie')
+      expect(setCookie).toContain('sessionId=;')
+      expect(setCookie).toContain('Max-Age=0')
+
+      // Check session deleted from KV
+      expect(await env.SESSION_KV.get(sessionId)).toBeNull()
+    })
+
+    it('with no cookie - redirects cleanly', async () => {
+      const res = await app.request('/logout')
+
+      expect(res.status).toBe(302)
+      const location = res.headers.get('Location')
+      expect(location).toContain(`https://${config.domain}/v2/logout`)
+      expect(location).toContain(`client_id=${config.clientId}`)
+      expect(location).toContain(`returnTo=${encodeURIComponent(config.baseUrl)}`)
+
+      // Check cookie cleared even if not present
+      const setCookie = res.headers.get('Set-Cookie')
+      expect(setCookie).toContain('sessionId=;')
+      expect(setCookie).toContain('Max-Age=0')
+    })
+  })
 })
