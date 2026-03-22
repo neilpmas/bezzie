@@ -1,5 +1,6 @@
-import { Hono } from 'hono'
+import { Hono, type MiddlewareHandler } from 'hono'
 import { authRoutes } from './routes'
+import { middleware, type Variables } from './middleware'
 
 export interface BezzieConfig {
   domain: string
@@ -12,7 +13,7 @@ export interface BezzieConfig {
 
 export interface Bezzie {
   routes: () => Hono
-  middleware: () => (c: unknown, next: () => Promise<void>) => Promise<void>
+  middleware: () => MiddlewareHandler<{ Variables: Variables }>
 }
 
 export function createBezzie(config: BezzieConfig): Bezzie {
@@ -20,8 +21,6 @@ export function createBezzie(config: BezzieConfig): Bezzie {
 
   return {
     routes: () => router,
-    middleware: () => async (_c, next) => {
-      await next()
-    },
+    middleware: () => middleware(config),
   }
 }
