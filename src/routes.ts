@@ -1,17 +1,20 @@
 import { Hono } from 'hono'
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
 import * as oauth from 'oauth4webapi'
-import { type Session } from './session'
-import { type PKCEState } from './adapters/types'
+import type { Session, PKCEState } from './session'
 import type { BezzieConfig } from './index'
 
 let cachedAS: oauth.AuthorizationServer | null = null
 let cacheExpiresAt = 0
 
-async function getAuthorizationServer(domain: string): Promise<oauth.AuthorizationServer> {
+async function getAuthorizationServer(config: BezzieConfig): Promise<oauth.AuthorizationServer> {
   if (cachedAS && Date.now() < cacheExpiresAt) return cachedAS
-  const response = await oauth.discoveryRequest(new URL(`https://${domain}`))
-  cachedAS = await oauth.processDiscoveryResponse(new URL(`https://${domain}`), response)
+  const issuerUrl = new URL(config.issuer)
+  const response = await oauth.discoveryRequest(issuerUrl)
+  const as = await oauth.processDiscoveryResponse(issuerUrl, response)
+  cachedAS = config.providerHints?.tokenEndpoint
+    ? { ...as, token_endpoint: config.providerHints.tokenEndpoint }
+    : as
   cacheExpiresAt = Date.now() + 60 * 60 * 1000 // 1 hour
   return cachedAS
 }
@@ -35,7 +38,12 @@ export function authRoutes(config: BezzieConfig) {
     // Store state and codeVerifier in adapter
     await config.adapter.set(`pkce:${state}`, { codeVerifier: code_verifier, returnTo } as PKCEState, 600) // 10 minutes
 
-    const authorizationUrl = new URL(`https://${config.domain}/authorize`)
+    const as = await getAuthorizationServer(config)
+    if (!as.authorization_endpoint) {
+      return c.text('Missing authorization_endpoint', 500)
+    }
+
+    const authorizationUrl = new URL(as.authorization_endpoint)
     authorizationUrl.searchParams.set('client_id', config.clientId)
     authorizationUrl.searchParams.set('response_type', 'code')
     authorizationUrl.searchParams.set('redirect_uri', `${config.baseUrl}/auth/callback`)
@@ -70,7 +78,7 @@ export function authRoutes(config: BezzieConfig) {
 
     await config.adapter.delete(`pkce:${state}`)
 
-    const as = await getAuthorizationServer(config.domain)
+    const as = await getAuthorizationServer(config)
 
     const client: oauth.Client = {
       client_id: config.clientId,
@@ -134,17 +142,20 @@ export function authRoutes(config: BezzieConfig) {
       secure: true,
     })
 
-    const as = await getAuthorizationServer(config.domain)
+    const as = await getAuthorizationServer(config)
 
     let logoutUrl: URL
-    if (as.end_session_endpoint) {
+    if (config.providerHints?.logoutUrl) {
+      logoutUrl = new URL(config.providerHints.logoutUrl)
+      logoutUrl.searchParams.set('client_id', config.clientId)
+      logoutUrl.searchParams.set('returnTo', config.baseUrl)
+    } else if (as.end_session_endpoint) {
       logoutUrl = new URL(as.end_session_endpoint)
       logoutUrl.searchParams.set('client_id', config.clientId)
       logoutUrl.searchParams.set('post_logout_redirect_uri', config.baseUrl)
     } else {
-      logoutUrl = new URL(`https://${config.domain}/v2/logout`)
-      logoutUrl.searchParams.set('client_id', config.clientId)
-      logoutUrl.searchParams.set('returnTo', config.baseUrl)
+      // If no endpoint found, we just redirect to base URL
+      return c.redirect('/')
     }
 
     return c.redirect(logoutUrl.toString())

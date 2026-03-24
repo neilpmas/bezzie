@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { Hono } from 'hono'
-import { createBezzie, MemoryAdapter, type Bezzie } from '../src/index'
+import { createBezzie, MemoryAdapter, type Bezzie } from '../src'
+import { _resetDiscoveryCache } from '../src/middleware'
 import * as oauth from 'oauth4webapi'
 
 // Mock oauth4webapi
@@ -20,12 +21,14 @@ describe('Middleware', () => {
   let adapter: MemoryAdapter
   let auth: Bezzie
   let app: Hono
+  const issuer = 'https://test.auth0.com'
 
   beforeEach(async () => {
     vi.clearAllMocks()
+    _resetDiscoveryCache()
     adapter = new MemoryAdapter()
     const config = {
-      domain: 'test.auth0.com',
+      issuer,
       clientId: 'test-client-id',
       clientSecret: 'test-client-secret',
       audience: 'https://api.test.com',
@@ -40,6 +43,11 @@ describe('Middleware', () => {
     app.get('/api/me', (c) => {
       return c.json({ user: c.get('user'), accessToken: c.get('accessToken') })
     })
+
+    // Default mock for discovery
+    const mockAs = { issuer, jwks_uri: `${issuer}/jwks` }
+    vi.mocked(oauth.discoveryRequest).mockResolvedValue({} as unknown as Response)
+    vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue(mockAs as oauth.AuthorizationServer)
   })
 
   it('returns 401 with no cookie', async () => {

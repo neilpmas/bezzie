@@ -23,14 +23,14 @@ There's no open source library for this specific combination (BFF OAuth on Cloud
 ## Usage
 
 ```typescript
-import { createBezzie } from 'bezzie'
+import { createBezzie, providers, cloudflareKV } from 'bezzie'
 
 const auth = createBezzie({
-  domain: 'your-tenant.auth0.com',
+  ...providers.auth0('your-tenant.auth0.com'),
   clientId: 'xxx',
   clientSecret: env.AUTH0_CLIENT_SECRET,
   audience: 'https://api.yourproject.com',
-  kv: env.SESSION_KV,
+  adapter: cloudflareKV(env.SESSION_KV),
   baseUrl: 'https://app.yourproject.com',
 })
 
@@ -88,12 +88,13 @@ KV TTL is aligned with the refresh token lifetime. When the refresh token expire
 
 | Option | Type | Description |
 |---|---|---|
-| `domain` | `string` | Your OAuth provider domain (e.g. `tenant.auth0.com`) |
+| `issuer` | `string` | Your OIDC provider issuer URL (e.g. `https://tenant.auth0.com`) |
 | `clientId` | `string` | OAuth client ID |
 | `clientSecret` | `string` | OAuth client secret — keep in Workers secrets |
 | `audience` | `string` | API audience identifier |
-| `kv` | `KVNamespace` | Cloudflare KV namespace binding for session storage |
+| `adapter` | `SessionAdapter` | Session adapter (e.g. `cloudflareKV(env.SESSION_KV)`) |
 | `baseUrl` | `string` | Base URL of your application (used for callback and redirects) |
+| `providerHints` | `object` | Optional tweaks for specific providers (`logoutUrl`, `tokenEndpoint`) |
 
 ---
 
