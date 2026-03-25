@@ -11,6 +11,10 @@ export interface Session {
    */
   refreshToken?: string
   /**
+   * OAuth ID token.
+   */
+  idToken?: string
+  /**
    * Expiration time of the access token as a Unix timestamp (seconds).
    */
   expiresAt: number

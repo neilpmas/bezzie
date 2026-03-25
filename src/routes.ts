@@ -80,7 +80,7 @@ export function authRoutes(config: BezzieConfig, cache: DiscoveryCache) {
       return c.text('OAuth 2.0 error', 400)
     }
 
-    const { access_token, refresh_token, expires_in } = result
+    const { access_token, refresh_token, expires_in, id_token } = result
     const claims = oauth.getValidatedIdTokenClaims(result)
 
     if (!refresh_token) {
@@ -91,6 +91,7 @@ export function authRoutes(config: BezzieConfig, cache: DiscoveryCache) {
     const session: Session = {
       accessToken: access_token,
       refreshToken: refresh_token,
+      idToken: id_token,
       expiresAt: Math.floor(Date.now() / 1000) + (expires_in || 3600),
       createdAt: Math.floor(Date.now() / 1000),
       user: {
@@ -120,7 +121,12 @@ export function authRoutes(config: BezzieConfig, cache: DiscoveryCache) {
 
   router.post('/logout', async (c) => {
     const sessionId = getCookie(c, config.cookieName ?? '__Host-session')
+    let idToken: string | undefined
     if (sessionId) {
+      const session = await sessionStore.get(sessionId)
+      if (session && !('codeVerifier' in session)) {
+        idToken = (session as Session).idToken
+      }
       await sessionStore.delete(sessionId)
     }
 
@@ -136,10 +142,16 @@ export function authRoutes(config: BezzieConfig, cache: DiscoveryCache) {
       logoutUrl = new URL(config.providerHints.logoutUrl)
       logoutUrl.searchParams.set('client_id', config.clientId)
       logoutUrl.searchParams.set('returnTo', config.baseUrl)
+      if (idToken) {
+        logoutUrl.searchParams.set('id_token_hint', idToken)
+      }
     } else if (as.end_session_endpoint) {
       logoutUrl = new URL(as.end_session_endpoint)
       logoutUrl.searchParams.set('client_id', config.clientId)
       logoutUrl.searchParams.set('post_logout_redirect_uri', config.baseUrl)
+      if (idToken) {
+        logoutUrl.searchParams.set('id_token_hint', idToken)
+      }
     } else {
       // If no endpoint found, we just redirect to base URL
       return c.redirect('/')
