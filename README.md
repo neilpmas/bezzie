@@ -17,21 +17,22 @@ npm install bezzie
 **1. Install:**
 ```sh
 npm install bezzie
+```
 
-2. Add a KV namespace to wrangler.toml:
-
-[[
-kv_namespaces
-]]
+**2. Add a KV namespace to `wrangler.toml`:**
+```toml
+[[kv_namespaces]]
 binding = "SESSION_KV"
 id = "<your-kv-namespace-id>"
+```
 
-3. Add your client secret:
-
+**3. Add your client secret:**
+```sh
 wrangler secret put AUTH0_CLIENT_SECRET
+```
 
-4. Wire it up:
-
+**4. Wire it up:**
+```typescript
 import { createBezzie, providers, cloudflareKV } from 'bezzie'
 
 const auth = createBezzie({
@@ -44,10 +45,12 @@ const auth = createBezzie({
 
 app.route('/auth', auth.routes())
 app.use('/api/*', auth.middleware())
+```
 
-5. Protect a route:
-
+**5. Protect a route:**
+```typescript
 app.get('/api/me', (c) => c.json(c.var.user))
+```
 
 Done. Your app now has BCP212-compliant BFF auth.
 
