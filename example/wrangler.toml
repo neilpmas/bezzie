@@ -1,0 +1,10 @@
+name = "bezzie-example"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+[[kv_namespaces]]
+binding = "SESSION_KV"
+id = "<your-kv-namespace-id>"
+
+# In development, you can use wrangler secret put AUTH0_CLIENT_SECRET
+# Or add it to a .dev.vars file

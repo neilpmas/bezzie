@@ -45,9 +45,43 @@ This gives you:
 
 | Route | Description |
 |---|---|
-| `GET /auth/login` | Redirects to provider, initiates Authorization Code + PKCE flow |
-| `GET /auth/callback` | Exchanges code for tokens, stores session in KV, sets cookie |
-| `GET /auth/logout` | Clears session, clears cookie, redirects to provider logout |
+| `GET /auth/login` | Redirects to provider, initiates Authorization Code + PKCE flow. Supports `returnTo` query param for post-login redirect. |
+| `GET /auth/callback` | Exchanges code for tokens, stores session in KV, sets cookie. |
+| `GET /auth/logout` | Clears session, clears cookie, redirects to provider logout. |
+
+---
+
+## Accessing User Identity
+
+After `auth.middleware()`, downstream handlers can access the user identity and the current access token via `c.var`:
+
+```typescript
+app.get('/api/me', (c) => {
+  const user = c.var.user
+  const token = c.var.accessToken
+  return c.json({ user })
+})
+```
+
+## Forwarding Upstream
+
+The `accessToken` on the context is intended for the app to forward to an upstream service (e.g., a Spring Boot API or any other microservice), since Bezzie doesn't mutate request headers directly.
+
+```typescript
+app.all('/api/proxy/*', async (c) => {
+  const url = new URL(c.req.url)
+  const target = `https://api.upstream.com${url.pathname}${url.search}`
+  
+  return fetch(target, {
+    method: c.req.method,
+    headers: {
+      ...c.req.header(),
+      'Authorization': `Bearer ${c.var.accessToken}`
+    },
+    body: c.req.raw.body
+  })
+})
+```
 
 ---
 
@@ -81,6 +115,36 @@ sessionId → { accessToken, refreshToken, expiresAt, user }
 ```
 
 KV TTL is aligned with the refresh token lifetime. When the refresh token expires, the user must log in again.
+
+---
+
+## Adapters
+
+Bezzie supports multiple session storage backends:
+
+### Cloudflare KV
+Recommended for production on Cloudflare Workers.
+```typescript
+import { cloudflareKV } from 'bezzie'
+// ...
+adapter: cloudflareKV(env.SESSION_KV)
+```
+
+### Redis (Upstash)
+Good for cross-region session consistency.
+```typescript
+import { RedisAdapter } from 'bezzie'
+// ...
+adapter: new RedisAdapter({ url: env.REDIS_URL, token: env.REDIS_TOKEN })
+```
+
+### Memory
+Useful for local development and testing. Do not use in production.
+```typescript
+import { MemoryAdapter } from 'bezzie'
+// ...
+adapter: new MemoryAdapter()
+```
 
 ---
 
@@ -129,7 +193,7 @@ wrangler secret put AUTH0_CLIENT_SECRET
 
 ## Status
 
-Under active development. Not yet published to npm.
+v0.1.0 — pre-release
 
 ---
 

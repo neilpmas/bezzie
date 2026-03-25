@@ -4,7 +4,20 @@ import * as oauth from 'oauth4webapi'
 import type { Session } from './session'
 import type { BezzieConfig } from './index'
 
-export type Variables = { user: Session['user']; accessToken: string }
+/**
+ * Hono context variables provided by Bezzie middleware.
+ * These are what downstream route handlers read from `c.var`.
+ */
+export type Variables = {
+  /**
+   * The authenticated user's information.
+   */
+  user: Session['user']
+  /**
+   * The current OAuth access token.
+   */
+  accessToken: string
+}
 
 const jwksCache: oauth.JWKSCacheInput = {}
 let cachedAS: oauth.AuthorizationServer | null = null

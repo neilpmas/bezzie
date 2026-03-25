@@ -4,46 +4,121 @@ import { middleware, type Variables } from './middleware'
 
 import { CloudflareKVAdapter, type SessionAdapter } from './session'
 
+/**
+ * Configuration for Bezzie.
+ */
 export interface BezzieConfig {
+  /**
+   * Your OIDC provider issuer URL (e.g. `https://tenant.auth0.com`).
+   */
   issuer: string
+
+  /**
+   * OAuth client ID.
+   */
   clientId: string
+
+  /**
+   * OAuth client secret — keep this in Workers secrets.
+   */
   clientSecret: string
+
+  /**
+   * Optional API audience identifier.
+   */
   audience?: string
+
+  /**
+   * Session adapter (e.g. `cloudflareKV(env.SESSION_KV)`).
+   */
   adapter: SessionAdapter
+
+  /**
+   * Base URL of your application (used for callback and redirects).
+   */
   baseUrl: string
+
+  /**
+   * Optional tweaks for specific providers.
+   */
   providerHints?: {
+    /**
+     * Custom logout URL if different from the default OIDC logout.
+     */
     logoutUrl?: string
+
+    /**
+     * Custom token endpoint if different from the discovery metadata.
+     */
     tokenEndpoint?: string
   }
 }
 
+/**
+ * Common OIDC provider configurations.
+ */
 export const providers = {
+  /**
+   * Auth0 provider configuration.
+   */
   auth0: (domain: string) => ({
     issuer: `https://${domain}`,
     providerHints: {
       logoutUrl: `https://${domain}/v2/logout`,
     },
   }),
+
+  /**
+   * Okta provider configuration.
+   */
   okta: (domain: string) => ({
     issuer: `https://${domain}/oauth2/default`,
   }),
+
+  /**
+   * Keycloak provider configuration.
+   */
   keycloak: (baseUrl: string, realm: string) => ({
     issuer: `${baseUrl}/realms/${realm}`,
   }),
+
+  /**
+   * Google provider configuration.
+   */
   google: () => ({
     issuer: 'https://accounts.google.com',
   }),
 }
 
+/**
+ * Creates a Cloudflare KV session adapter.
+ */
 function cloudflareKV(kv: KVNamespace): SessionAdapter {
   return new CloudflareKVAdapter(kv)
 }
 
+/**
+ * The main Bezzie interface.
+ */
 export interface Bezzie {
+  /**
+   * Returns a Hono app containing the auth routes (/login, /callback, /logout).
+   */
   routes: () => Hono
+
+  /**
+   * Returns a Hono middleware that protects routes and manages sessions.
+   */
   middleware: () => MiddlewareHandler<{ Variables: Variables }>
 }
 
+/**
+ * Creates a new Bezzie instance.
+ *
+ * @param config Bezzie configuration
+ * @returns Bezzie instance
+ * @throws {Error} if required configuration is missing or invalid
+ */
 function createBezzie(config: BezzieConfig): Bezzie {
   const required = ['issuer', 'clientId', 'clientSecret', 'adapter', 'baseUrl']
   for (const key of required) {
@@ -71,5 +146,6 @@ function createBezzie(config: BezzieConfig): Bezzie {
 }
 
 export { createBezzie, cloudflareKV }
+export type { Variables } from './middleware'
 export type { SessionAdapter, PKCEState, Session } from './session'
 export { CloudflareKVAdapter, RedisAdapter, MemoryAdapter } from './session'
