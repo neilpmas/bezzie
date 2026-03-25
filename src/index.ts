@@ -1,6 +1,7 @@
 import { Hono, type MiddlewareHandler } from 'hono'
 import { authRoutes } from './routes'
 import { middleware, type Variables } from './middleware'
+import { createDiscoveryCache, type DiscoveryCache } from './discovery'
 
 import { CloudflareKVAdapter, type SessionAdapter } from './session'
 
@@ -110,6 +111,12 @@ export interface Bezzie {
    * Returns a Hono middleware that protects routes and manages sessions.
    */
   middleware: () => MiddlewareHandler<{ Variables: Variables }>
+
+  /**
+   * Internal discovery cache.
+   * @internal
+   */
+  cache: DiscoveryCache
 }
 
 /**
@@ -137,11 +144,13 @@ function createBezzie(config: BezzieConfig): Bezzie {
     throw new Error('Bezzie: issuer must be a valid URL')
   }
 
-  const router = authRoutes(config)
+  const cache = createDiscoveryCache()
+  const router = authRoutes(config, cache)
 
   return {
     routes: () => router,
-    middleware: () => middleware(config),
+    middleware: () => middleware(config, cache),
+    cache,
   }
 }
 

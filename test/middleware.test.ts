@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { Hono } from 'hono'
 import { createBezzie, MemoryAdapter, type Bezzie } from '../src'
-import { _resetDiscoveryCache } from '../src/middleware'
 import * as oauth from 'oauth4webapi'
 
 // Mock oauth4webapi
@@ -25,7 +24,6 @@ describe('Middleware', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks()
-    _resetDiscoveryCache()
     adapter = new MemoryAdapter()
     const config = {
       issuer,

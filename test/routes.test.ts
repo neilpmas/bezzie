@@ -1,6 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
 import { createBezzie, MemoryAdapter, type PKCEState, type Session } from '../src'
-import { _resetDiscoveryCache } from '../src/routes'
 import * as oauth from 'oauth4webapi'
 
 // Mock oauth4webapi
@@ -32,7 +31,8 @@ describe('OAuth Routes', () => {
 
   describe('GET /login', () => {
     it('redirects to the provider authorization URL', async () => {
-      _resetDiscoveryCache()
+      auth.cache.cachedAS = null
+      auth.cache.cacheExpiresAt = 0
       const mockAs = { 
         issuer: config.issuer,
         authorization_endpoint: `${config.issuer}/authorize`
@@ -54,7 +54,8 @@ describe('OAuth Routes', () => {
     })
 
     it('stores PKCE state in adapter', async () => {
-      _resetDiscoveryCache()
+      auth.cache.cachedAS = null
+      auth.cache.cacheExpiresAt = 0
       const mockAs = { 
         issuer: config.issuer,
         authorization_endpoint: `${config.issuer}/authorize`
@@ -72,7 +73,8 @@ describe('OAuth Routes', () => {
     })
 
     it('stores returnTo in PKCE state if provided', async () => {
-      _resetDiscoveryCache()
+      auth.cache.cachedAS = null
+      auth.cache.cacheExpiresAt = 0
       const mockAs = { 
         issuer: config.issuer,
         authorization_endpoint: `${config.issuer}/authorize`
@@ -206,7 +208,8 @@ describe('OAuth Routes', () => {
 
   describe('GET /logout', () => {
     it('redirects to / if no logout URL can be determined', async () => {
-      _resetDiscoveryCache()
+      auth.cache.cachedAS = null
+      auth.cache.cacheExpiresAt = 0
       const mockAs = { issuer: config.issuer }
       vi.mocked(oauth.discoveryRequest).mockResolvedValue({} as unknown as Response)
       vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue(mockAs as oauth.AuthorizationServer)
@@ -217,7 +220,6 @@ describe('OAuth Routes', () => {
     })
 
     it('uses providerHints.logoutUrl if provided', async () => {
-      _resetDiscoveryCache()
       const customConfig = { ...config, providerHints: { logoutUrl: 'https://test.auth0.com/v2/logout' } }
       const customAuth = createBezzie(customConfig)
       const customApp = customAuth.routes()
@@ -236,7 +238,8 @@ describe('OAuth Routes', () => {
     })
 
     it('redirects to OIDC end_session_endpoint if available', async () => {
-      _resetDiscoveryCache()
+      auth.cache.cachedAS = null
+      auth.cache.cacheExpiresAt = 0
 
       const mockAs = { 
         issuer: config.issuer,
@@ -255,7 +258,8 @@ describe('OAuth Routes', () => {
     })
 
     it('with valid session cookie - deletes session from adapter, clears cookie', async () => {
-      _resetDiscoveryCache()
+      auth.cache.cachedAS = null
+      auth.cache.cacheExpiresAt = 0
       const sessionId = 'test-session-id'
       await adapter.set(sessionId, { accessToken: 'test' } as Session, 3600)
 
