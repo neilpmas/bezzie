@@ -1,30 +1,11 @@
 import { Hono } from 'hono'
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
 import * as oauth from 'oauth4webapi'
+import { getAuthorizationServer, type DiscoveryCache } from './discovery'
 import type { Session, PKCEState } from './session'
 import type { BezzieConfig } from './index'
 
-let cachedAS: oauth.AuthorizationServer | null = null
-let cacheExpiresAt = 0
-
-async function getAuthorizationServer(config: BezzieConfig): Promise<oauth.AuthorizationServer> {
-  if (cachedAS && Date.now() < cacheExpiresAt) return cachedAS
-  const issuerUrl = new URL(config.issuer)
-  const response = await oauth.discoveryRequest(issuerUrl)
-  const as = await oauth.processDiscoveryResponse(issuerUrl, response)
-  cachedAS = config.providerHints?.tokenEndpoint
-    ? { ...as, token_endpoint: config.providerHints.tokenEndpoint }
-    : as
-  cacheExpiresAt = Date.now() + 60 * 60 * 1000 // 1 hour
-  return cachedAS
-}
-
-export function _resetDiscoveryCache() {
-  cachedAS = null
-  cacheExpiresAt = 0
-}
-
-export function authRoutes(config: BezzieConfig) {
+export function authRoutes(config: BezzieConfig, cache: DiscoveryCache) {
   const router = new Hono()
   const sessionStore = config.adapter
 
@@ -38,7 +19,7 @@ export function authRoutes(config: BezzieConfig) {
     // Store state and codeVerifier in adapter
     await config.adapter.set(`pkce:${state}`, { codeVerifier: code_verifier, returnTo } as PKCEState, 600) // 10 minutes
 
-    const as = await getAuthorizationServer(config)
+    const as = await getAuthorizationServer(config, cache)
     if (!as.authorization_endpoint) {
       return c.text('Missing authorization_endpoint', 500)
     }
@@ -78,7 +59,7 @@ export function authRoutes(config: BezzieConfig) {
 
     await config.adapter.delete(`pkce:${state}`)
 
-    const as = await getAuthorizationServer(config)
+    const as = await getAuthorizationServer(config, cache)
 
     const client: oauth.Client = {
       client_id: config.clientId,
@@ -107,6 +88,7 @@ export function authRoutes(config: BezzieConfig) {
       accessToken: access_token,
       refreshToken: refresh_token || '',
       expiresAt: Math.floor(Date.now() / 1000) + (expires_in || 3600),
+      createdAt: Math.floor(Date.now() / 1000),
       user: {
         ...claims,
         sub: claims.sub,
@@ -117,11 +99,12 @@ export function authRoutes(config: BezzieConfig) {
     // TTL for session in KV. Set to 30 days as per bug fix 3.
     await sessionStore.set(sessionId, session, 30 * 24 * 60 * 60)
 
-    setCookie(c, 'sessionId', sessionId, {
+    setCookie(c, '__Host-session', sessionId, {
       httpOnly: true,
       secure: true,
       sameSite: 'Strict',
       path: '/',
+      maxAge: 30 * 24 * 60 * 60, // 30 days, matches KV session TTL
     })
 
     if (returnTo && returnTo.startsWith('/') && !returnTo.startsWith('//')) {
@@ -131,18 +114,18 @@ export function authRoutes(config: BezzieConfig) {
     return c.redirect('/')
   })
 
-  router.get('/logout', async (c) => {
-    const sessionId = getCookie(c, 'sessionId')
+  router.post('/logout', async (c) => {
+    const sessionId = getCookie(c, '__Host-session')
     if (sessionId) {
       await sessionStore.delete(sessionId)
     }
 
-    deleteCookie(c, 'sessionId', {
+    deleteCookie(c, '__Host-session', {
       path: '/',
       secure: true,
     })
 
-    const as = await getAuthorizationServer(config)
+    const as = await getAuthorizationServer(config, cache)
 
     let logoutUrl: URL
     if (config.providerHints?.logoutUrl) {

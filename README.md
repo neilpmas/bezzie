@@ -47,7 +47,7 @@ This gives you:
 |---|---|
 | `GET /auth/login` | Redirects to provider, initiates Authorization Code + PKCE flow. Supports `returnTo` query param for post-login redirect. |
 | `GET /auth/callback` | Exchanges code for tokens, stores session in KV, sets cookie. |
-| `GET /auth/logout` | Clears session, clears cookie, redirects to provider logout. |
+| `POST /auth/logout` | Clears session, clears cookie, redirects to provider logout. |
 
 ---
 

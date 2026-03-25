@@ -14,6 +14,8 @@ describe('createBezzie', () => {
 
     expect(typeof auth.routes).toBe('function')
     expect(typeof auth.middleware).toBe('function')
+    expect(auth.cache).toBeDefined()
+    expect(auth.cache.cachedAS).toBeNull()
   })
 
   it('routes() returns a Hono instance', () => {

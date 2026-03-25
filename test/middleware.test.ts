@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { Hono } from 'hono'
 import { createBezzie, MemoryAdapter, type Bezzie } from '../src'
-import { _resetDiscoveryCache } from '../src/middleware'
 import * as oauth from 'oauth4webapi'
 
 // Mock oauth4webapi
@@ -25,7 +24,6 @@ describe('Middleware', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks()
-    _resetDiscoveryCache()
     adapter = new MemoryAdapter()
     const config = {
       issuer,
@@ -59,7 +57,7 @@ describe('Middleware', () => {
   it('returns 401 with invalid session (not in KV)', async () => {
     const res = await app.request('/api/me', {
       headers: {
-        Cookie: 'sessionId=non-existent',
+        Cookie: '__Host-session=non-existent',
       },
     })
     expect(res.status).toBe(401)
@@ -74,6 +72,7 @@ describe('Middleware', () => {
         accessToken: 'valid-token',
         refreshToken: 'valid-refresh',
         expiresAt: Math.floor(Date.now() / 1000) + 3600,
+        createdAt: Math.floor(Date.now() / 1000),
         user,
       },
       3600
@@ -84,7 +83,7 @@ describe('Middleware', () => {
 
     const res = await app.request('/api/me', {
       headers: {
-        Cookie: `sessionId=${sessionId}`,
+        Cookie: `__Host-session=${sessionId}`,
       },
     })
 
@@ -103,6 +102,7 @@ describe('Middleware', () => {
         accessToken: 'expired-token',
         refreshToken: 'valid-refresh',
         expiresAt: Math.floor(Date.now() / 1000) - 10, // expired 10s ago
+        createdAt: Math.floor(Date.now() / 1000) - 1000,
         user,
       },
       86400
@@ -120,7 +120,7 @@ describe('Middleware', () => {
 
     const res = await app.request('/api/me', {
       headers: {
-        Cookie: `sessionId=${sessionId}`,
+        Cookie: `__Host-session=${sessionId}`,
       },
     })
 
@@ -143,6 +143,7 @@ describe('Middleware', () => {
         accessToken: 'expired-token',
         refreshToken: 'invalid-refresh',
         expiresAt: Math.floor(Date.now() / 1000) - 10,
+        createdAt: Math.floor(Date.now() / 1000) - 1000,
         user: { sub: '123' },
       },
       3600
@@ -156,7 +157,7 @@ describe('Middleware', () => {
 
     const res = await app.request('/api/me', {
       headers: {
-        Cookie: `sessionId=${sessionId}`,
+        Cookie: `__Host-session=${sessionId}`,
       },
     })
 
@@ -174,6 +175,7 @@ describe('Middleware', () => {
         accessToken: 'invalid-jwt',
         refreshToken: 'refresh',
         expiresAt: Math.floor(Date.now() / 1000) + 3600,
+        createdAt: Math.floor(Date.now() / 1000),
         user: { sub: '123' },
       },
       3600
@@ -184,7 +186,7 @@ describe('Middleware', () => {
 
     const res = await app.request('/api/me', {
       headers: {
-        Cookie: `sessionId=${sessionId}`,
+        Cookie: `__Host-session=${sessionId}`,
       },
     })
 
@@ -199,6 +201,7 @@ describe('Middleware', () => {
         accessToken: 'near-expiry-token',
         refreshToken: 'valid-refresh',
         expiresAt: Math.floor(Date.now() / 1000) + 30, // expires in 30s
+        createdAt: Math.floor(Date.now() / 1000) - 1000,
         user: { sub: '123' },
       },
       3600
@@ -214,12 +217,208 @@ describe('Middleware', () => {
 
     const res = await app.request('/api/me', {
       headers: {
-        Cookie: `sessionId=${sessionId}`,
+        Cookie: `__Host-session=${sessionId}`,
       },
     })
 
     expect(res.status).toBe(200)
     const data = await res.json()
     expect(data.accessToken).toBe('new-token')
+  })
+
+  it('skips JWT validation when no audience is configured', async () => {
+    // Create a new app/middleware with no audience
+    const configNoAudience = {
+      issuer,
+      clientId: 'test-client-id',
+      clientSecret: 'test-client-secret',
+      // no audience
+      adapter,
+      baseUrl: 'https://app.test.com',
+    }
+    const authNoAudience = createBezzie(configNoAudience)
+    const appNoAudience = new Hono()
+    appNoAudience.use('/api/*', authNoAudience.middleware())
+    appNoAudience.get('/api/me', (c) => c.json({ ok: true }))
+
+    const sessionId = 'test-session-id'
+    await adapter.set(sessionId, {
+      accessToken: 'valid-token',
+      refreshToken: 'valid-refresh',
+      expiresAt: Math.floor(Date.now() / 1000) + 3600,
+      createdAt: Math.floor(Date.now() / 1000),
+      user: { sub: '123' },
+    }, 3600)
+
+    const res = await appNoAudience.request('/api/me', {
+      headers: {
+        Cookie: `__Host-session=${sessionId}`,
+      },
+    })
+
+    expect(res.status).toBe(200)
+    // Should NOT have called validateJwtAccessToken
+    expect(oauth.validateJwtAccessToken).not.toHaveBeenCalled()
+  })
+
+  it('skips JWT validation when validateAccessToken is false', async () => {
+    const configWithValidateFalse = {
+      issuer,
+      clientId: 'test-client-id',
+      clientSecret: 'test-client-secret',
+      audience: 'https://api.test.com',
+      adapter,
+      baseUrl: 'https://app.test.com',
+      validateAccessToken: false,
+    }
+    const authWithValidateFalse = createBezzie(configWithValidateFalse)
+    const appWithValidateFalse = new Hono()
+    appWithValidateFalse.use('/api/*', authWithValidateFalse.middleware())
+    appWithValidateFalse.get('/api/me', (c) => c.json({ ok: true }))
+
+    const sessionId = 'test-session-id'
+    await adapter.set(sessionId, {
+      accessToken: 'opaque-token',
+      refreshToken: 'valid-refresh',
+      expiresAt: Math.floor(Date.now() / 1000) + 3600,
+      createdAt: Math.floor(Date.now() / 1000),
+      user: { sub: '123' },
+    }, 3600)
+
+    const res = await appWithValidateFalse.request('/api/me', {
+      headers: {
+        Cookie: `__Host-session=${sessionId}`,
+      },
+    })
+
+    expect(res.status).toBe(200)
+    expect(oauth.validateJwtAccessToken).not.toHaveBeenCalled()
+  })
+
+  it('re-reads session from store when refresh fails with invalid_grant (race condition)', async () => {
+    const sessionId = 'test-session-id'
+    const user = { sub: 'user-123' }
+    const oldAccessToken = 'expired-token'
+    const newAccessToken = 'already-refreshed-token'
+
+    // Initial state: near-expiry token
+    await adapter.set(
+      sessionId,
+      {
+        accessToken: oldAccessToken,
+        refreshToken: 'valid-refresh',
+        expiresAt: Math.floor(Date.now() / 1000) + 30, // expires in 30s
+        createdAt: Math.floor(Date.now() / 1000),
+        user,
+      },
+      86400
+    )
+
+    // Mock failed refresh with invalid_grant
+    vi.mocked(oauth.refreshTokenGrantRequest).mockResolvedValue({} as Response)
+    vi.mocked(oauth.processRefreshTokenResponse).mockResolvedValue({
+      error: 'invalid_grant',
+    } as oauth.OAuth2Error)
+    vi.mocked(oauth.validateJwtAccessToken).mockResolvedValue({} as oauth.JWTAccessTokenClaims)
+
+    const originalGet = adapter.get.bind(adapter)
+    let getCount = 0
+    vi.spyOn(adapter, 'get').mockImplementation(async (id: string) => {
+      getCount++
+      const result = await originalGet(id)
+      if (getCount === 1) {
+        // After first GET, update adapter to simulate concurrent refresh by another request
+        await adapter.set(
+          id,
+          {
+            accessToken: newAccessToken,
+            refreshToken: 'new-refresh',
+            expiresAt: Math.floor(Date.now() / 1000) + 3600,
+            createdAt: Math.floor(Date.now() / 1000),
+            user,
+          },
+          86400
+        )
+      }
+      return result
+    })
+
+    const res = await app.request('/api/me', {
+      headers: {
+        Cookie: `__Host-session=${sessionId}`,
+      },
+    })
+
+    expect(res.status).toBe(200)
+    const data = await res.json()
+    expect(data.accessToken).toBe(newAccessToken)
+
+    // Verify it was re-read (1st in middleware start, 2nd after invalid_grant)
+    expect(getCount).toBe(2)
+  })
+
+  it('redirects to login when session is older than 90 days (absolute expiry)', async () => {
+    const sessionId = 'old-session-id'
+    const MAX_SESSION_AGE = 90 * 24 * 60 * 60
+    await adapter.set(
+      sessionId,
+      {
+        accessToken: 'token',
+        refreshToken: 'refresh',
+        expiresAt: Math.floor(Date.now() / 1000) + 3600,
+        createdAt: Math.floor(Date.now() / 1000) - (MAX_SESSION_AGE + 1), // 90 days + 1 second ago
+        user: { sub: 'user-123' },
+      },
+      3600
+    )
+
+    const res = await app.request('/api/me', {
+      headers: {
+        Cookie: `__Host-session=${sessionId}`,
+      },
+    })
+
+    expect(res.status).toBe(302)
+    expect(res.headers.get('Location')).toBe('/auth/login')
+
+    // Session should be deleted from store
+    expect(await adapter.get(sessionId)).toBeNull()
+  })
+
+  it('redirects to custom login path when session is older than 90 days', async () => {
+    const configWithCustomLogin = {
+      issuer,
+      clientId: 'test-client-id',
+      clientSecret: 'test-client-secret',
+      adapter,
+      baseUrl: 'https://app.test.com',
+      loginPath: '/custom/login',
+    }
+    const authCustomLogin = createBezzie(configWithCustomLogin)
+    const appCustomLogin = new Hono()
+    appCustomLogin.use('/api/*', authCustomLogin.middleware())
+
+    const sessionId = 'old-session-id'
+    const MAX_SESSION_AGE = 90 * 24 * 60 * 60
+    await adapter.set(
+      sessionId,
+      {
+        accessToken: 'token',
+        refreshToken: 'refresh',
+        expiresAt: Math.floor(Date.now() / 1000) + 3600,
+        createdAt: Math.floor(Date.now() / 1000) - (MAX_SESSION_AGE + 1),
+        user: { sub: 'user-123' },
+      },
+      3600
+    )
+
+    const res = await appCustomLogin.request('/api/me', {
+      headers: {
+        Cookie: `__Host-session=${sessionId}`,
+      },
+    })
+
+    expect(res.status).toBe(302)
+    expect(res.headers.get('Location')).toBe('/custom/login')
   })
 })
