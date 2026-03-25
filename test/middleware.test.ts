@@ -72,6 +72,7 @@ describe('Middleware', () => {
         accessToken: 'valid-token',
         refreshToken: 'valid-refresh',
         expiresAt: Math.floor(Date.now() / 1000) + 3600,
+        createdAt: Math.floor(Date.now() / 1000),
         user,
       },
       3600
@@ -101,6 +102,7 @@ describe('Middleware', () => {
         accessToken: 'expired-token',
         refreshToken: 'valid-refresh',
         expiresAt: Math.floor(Date.now() / 1000) - 10, // expired 10s ago
+        createdAt: Math.floor(Date.now() / 1000) - 1000,
         user,
       },
       86400
@@ -141,6 +143,7 @@ describe('Middleware', () => {
         accessToken: 'expired-token',
         refreshToken: 'invalid-refresh',
         expiresAt: Math.floor(Date.now() / 1000) - 10,
+        createdAt: Math.floor(Date.now() / 1000) - 1000,
         user: { sub: '123' },
       },
       3600
@@ -172,6 +175,7 @@ describe('Middleware', () => {
         accessToken: 'invalid-jwt',
         refreshToken: 'refresh',
         expiresAt: Math.floor(Date.now() / 1000) + 3600,
+        createdAt: Math.floor(Date.now() / 1000),
         user: { sub: '123' },
       },
       3600
@@ -197,6 +201,7 @@ describe('Middleware', () => {
         accessToken: 'near-expiry-token',
         refreshToken: 'valid-refresh',
         expiresAt: Math.floor(Date.now() / 1000) + 30, // expires in 30s
+        createdAt: Math.floor(Date.now() / 1000) - 1000,
         user: { sub: '123' },
       },
       3600
@@ -241,6 +246,7 @@ describe('Middleware', () => {
       accessToken: 'valid-token',
       refreshToken: 'valid-refresh',
       expiresAt: Math.floor(Date.now() / 1000) + 3600,
+      createdAt: Math.floor(Date.now() / 1000),
       user: { sub: '123' },
     }, 3600)
 
@@ -275,6 +281,7 @@ describe('Middleware', () => {
       accessToken: 'opaque-token',
       refreshToken: 'valid-refresh',
       expiresAt: Math.floor(Date.now() / 1000) + 3600,
+      createdAt: Math.floor(Date.now() / 1000),
       user: { sub: '123' },
     }, 3600)
 
@@ -301,6 +308,7 @@ describe('Middleware', () => {
         accessToken: oldAccessToken,
         refreshToken: 'valid-refresh',
         expiresAt: Math.floor(Date.now() / 1000) + 30, // expires in 30s
+        createdAt: Math.floor(Date.now() / 1000),
         user,
       },
       86400
@@ -326,6 +334,7 @@ describe('Middleware', () => {
             accessToken: newAccessToken,
             refreshToken: 'new-refresh',
             expiresAt: Math.floor(Date.now() / 1000) + 3600,
+            createdAt: Math.floor(Date.now() / 1000),
             user,
           },
           86400
@@ -346,5 +355,70 @@ describe('Middleware', () => {
 
     // Verify it was re-read (1st in middleware start, 2nd after invalid_grant)
     expect(getCount).toBe(2)
+  })
+
+  it('redirects to login when session is older than 90 days (absolute expiry)', async () => {
+    const sessionId = 'old-session-id'
+    const MAX_SESSION_AGE = 90 * 24 * 60 * 60
+    await adapter.set(
+      sessionId,
+      {
+        accessToken: 'token',
+        refreshToken: 'refresh',
+        expiresAt: Math.floor(Date.now() / 1000) + 3600,
+        createdAt: Math.floor(Date.now() / 1000) - (MAX_SESSION_AGE + 1), // 90 days + 1 second ago
+        user: { sub: 'user-123' },
+      },
+      3600
+    )
+
+    const res = await app.request('/api/me', {
+      headers: {
+        Cookie: `__Host-session=${sessionId}`,
+      },
+    })
+
+    expect(res.status).toBe(302)
+    expect(res.headers.get('Location')).toBe('/auth/login')
+
+    // Session should be deleted from store
+    expect(await adapter.get(sessionId)).toBeNull()
+  })
+
+  it('redirects to custom login path when session is older than 90 days', async () => {
+    const configWithCustomLogin = {
+      issuer,
+      clientId: 'test-client-id',
+      clientSecret: 'test-client-secret',
+      adapter,
+      baseUrl: 'https://app.test.com',
+      loginPath: '/custom/login',
+    }
+    const authCustomLogin = createBezzie(configWithCustomLogin)
+    const appCustomLogin = new Hono()
+    appCustomLogin.use('/api/*', authCustomLogin.middleware())
+
+    const sessionId = 'old-session-id'
+    const MAX_SESSION_AGE = 90 * 24 * 60 * 60
+    await adapter.set(
+      sessionId,
+      {
+        accessToken: 'token',
+        refreshToken: 'refresh',
+        expiresAt: Math.floor(Date.now() / 1000) + 3600,
+        createdAt: Math.floor(Date.now() / 1000) - (MAX_SESSION_AGE + 1),
+        user: { sub: 'user-123' },
+      },
+      3600
+    )
+
+    const res = await appCustomLogin.request('/api/me', {
+      headers: {
+        Cookie: `__Host-session=${sessionId}`,
+      },
+    })
+
+    expect(res.status).toBe(302)
+    expect(res.headers.get('Location')).toBe('/custom/login')
   })
 })

@@ -15,6 +15,10 @@ export interface Session {
    */
   expiresAt: number
   /**
+   * Creation time of the session as a Unix timestamp (seconds).
+   */
+  createdAt: number
+  /**
    * User information from the ID token or userinfo endpoint.
    */
   user: {

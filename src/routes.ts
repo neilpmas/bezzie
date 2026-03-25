@@ -88,6 +88,7 @@ export function authRoutes(config: BezzieConfig, cache: DiscoveryCache) {
       accessToken: access_token,
       refreshToken: refresh_token || '',
       expiresAt: Math.floor(Date.now() / 1000) + (expires_in || 3600),
+      createdAt: Math.floor(Date.now() / 1000),
       user: {
         ...claims,
         sub: claims.sub,

@@ -40,6 +40,11 @@ export interface BezzieConfig {
   baseUrl: string
 
   /**
+   * Optional path to the login route (defaults to /auth/login).
+   */
+  loginPath?: string
+
+  /**
    * Whether to validate the access token (defaults to true).
    */
   validateAccessToken?: boolean

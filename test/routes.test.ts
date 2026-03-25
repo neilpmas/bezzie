@@ -146,6 +146,8 @@ describe('OAuth Routes', () => {
       expect(session).toBeDefined()
       expect(session!.accessToken).toBe('mock-access-token')
       expect(session!.user.sub).toBe('user-123')
+      expect(session!.createdAt).toBeTypeOf('number')
+      expect(session!.createdAt).toBeLessThanOrEqual(Math.floor(Date.now() / 1000))
 
       expect(await adapter.get(`pkce:${state}`)).toBeNull()
     })
@@ -262,7 +264,13 @@ describe('OAuth Routes', () => {
       auth.cache.cachedAS = null
       auth.cache.cacheExpiresAt = 0
       const sessionId = 'test-session-id'
-      await adapter.set(sessionId, { accessToken: 'test' } as Session, 3600)
+      await adapter.set(sessionId, { 
+        accessToken: 'test',
+        refreshToken: 'refresh',
+        expiresAt: Math.floor(Date.now() / 1000) + 3600,
+        createdAt: Math.floor(Date.now() / 1000),
+        user: { sub: 'user-123' },
+      } as Session, 3600)
 
       const mockAs = { 
         issuer: config.issuer,

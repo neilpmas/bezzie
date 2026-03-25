@@ -42,6 +42,13 @@ export function middleware(config: BezzieConfig, cache: DiscoveryCache): Middlew
       return c.text('Unauthorized', 401)
     }
 
+    // 4.5 Check for absolute session expiry (90 days)
+    const MAX_SESSION_AGE = 90 * 24 * 60 * 60 // 90 days
+    if (Math.floor(Date.now() / 1000) - session.createdAt > MAX_SESSION_AGE) {
+      await sessionStore.delete(sessionId)
+      return c.redirect(config.loginPath ?? '/auth/login')
+    }
+
     const as = await getAuthorizationServer(config, cache)
 
     // 5. Check if the access token is expired (with 60s buffer)

@@ -6,6 +6,7 @@ const mockSession: Session = {
   accessToken: 'access-token',
   refreshToken: 'refresh-token',
   expiresAt: Math.floor(Date.now() / 1000) + 3600,
+  createdAt: Math.floor(Date.now() / 1000),
   user: {
     sub: 'user-sub',
     email: 'user@example.com',
