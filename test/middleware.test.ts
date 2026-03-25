@@ -287,4 +287,64 @@ describe('Middleware', () => {
     expect(res.status).toBe(200)
     expect(oauth.validateJwtAccessToken).not.toHaveBeenCalled()
   })
+
+  it('re-reads session from store when refresh fails with invalid_grant (race condition)', async () => {
+    const sessionId = 'test-session-id'
+    const user = { sub: 'user-123' }
+    const oldAccessToken = 'expired-token'
+    const newAccessToken = 'already-refreshed-token'
+
+    // Initial state: near-expiry token
+    await adapter.set(
+      sessionId,
+      {
+        accessToken: oldAccessToken,
+        refreshToken: 'valid-refresh',
+        expiresAt: Math.floor(Date.now() / 1000) + 30, // expires in 30s
+        user,
+      },
+      86400
+    )
+
+    // Mock failed refresh with invalid_grant
+    vi.mocked(oauth.refreshTokenGrantRequest).mockResolvedValue({} as Response)
+    vi.mocked(oauth.processRefreshTokenResponse).mockResolvedValue({
+      error: 'invalid_grant',
+    } as oauth.OAuth2Error)
+    vi.mocked(oauth.validateJwtAccessToken).mockResolvedValue({} as oauth.JWTAccessTokenClaims)
+
+    const originalGet = adapter.get.bind(adapter)
+    let getCount = 0
+    vi.spyOn(adapter, 'get').mockImplementation(async (id: string) => {
+      getCount++
+      const result = await originalGet(id)
+      if (getCount === 1) {
+        // After first GET, update adapter to simulate concurrent refresh by another request
+        await adapter.set(
+          id,
+          {
+            accessToken: newAccessToken,
+            refreshToken: 'new-refresh',
+            expiresAt: Math.floor(Date.now() / 1000) + 3600,
+            user,
+          },
+          86400
+        )
+      }
+      return result
+    })
+
+    const res = await app.request('/api/me', {
+      headers: {
+        Cookie: `sessionId=${sessionId}`,
+      },
+    })
+
+    expect(res.status).toBe(200)
+    const data = await res.json()
+    expect(data.accessToken).toBe(newAccessToken)
+
+    // Verify it was re-read (1st in middleware start, 2nd after invalid_grant)
+    expect(getCount).toBe(2)
+  })
 })
