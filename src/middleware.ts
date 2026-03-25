@@ -71,19 +71,21 @@ export function middleware(config: BezzieConfig, cache: DiscoveryCache): Middlew
       await sessionStore.set(sessionId, session, 30 * 24 * 60 * 60) // 30 days, matches initial session TTL
     }
 
-    // 8. Validate the JWT using JWKS
-    try {
-      // We need a Request object that has the Authorization header for validateJwtAccessToken
-      const mockReq = new Request(c.req.raw.url, {
-        headers: {
-          Authorization: `Bearer ${session.accessToken}`,
-        },
-      })
+    // 8. Validate the JWT using JWKS (only if audience is set)
+    if (config.audience) {
+      try {
+        // We need a Request object that has the Authorization header for validateJwtAccessToken
+        const mockReq = new Request(c.req.raw.url, {
+          headers: {
+            Authorization: `Bearer ${session.accessToken}`,
+          },
+        })
 
-      await oauth.validateJwtAccessToken(as, mockReq, config.audience ?? '', { [oauth.jwksCache]: jwksCache })
-    } catch {
-      // 9. If JWT invalid → return 401
-      return c.text('Unauthorized', 401)
+        await oauth.validateJwtAccessToken(as, mockReq, config.audience, { [oauth.jwksCache]: jwksCache })
+      } catch {
+        // 9. If JWT invalid → return 401
+        return c.text('Unauthorized', 401)
+      }
     }
 
     // 10. Attach the user and accessToken to Hono context

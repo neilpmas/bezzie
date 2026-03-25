@@ -220,4 +220,38 @@ describe('Middleware', () => {
     const data = await res.json()
     expect(data.accessToken).toBe('new-token')
   })
+
+  it('skips JWT validation when no audience is configured', async () => {
+    // Create a new app/middleware with no audience
+    const configNoAudience = {
+      issuer,
+      clientId: 'test-client-id',
+      clientSecret: 'test-client-secret',
+      // no audience
+      adapter,
+      baseUrl: 'https://app.test.com',
+    }
+    const authNoAudience = createBezzie(configNoAudience)
+    const appNoAudience = new Hono()
+    appNoAudience.use('/api/*', authNoAudience.middleware())
+    appNoAudience.get('/api/me', (c) => c.json({ ok: true }))
+
+    const sessionId = 'test-session-id'
+    await adapter.set(sessionId, {
+      accessToken: 'valid-token',
+      refreshToken: 'valid-refresh',
+      expiresAt: Math.floor(Date.now() / 1000) + 3600,
+      user: { sub: '123' },
+    }, 3600)
+
+    const res = await appNoAudience.request('/api/me', {
+      headers: {
+        Cookie: `sessionId=${sessionId}`,
+      },
+    })
+
+    expect(res.status).toBe(200)
+    // Should NOT have called validateJwtAccessToken
+    expect(oauth.validateJwtAccessToken).not.toHaveBeenCalled()
+  })
 })
