@@ -103,6 +103,7 @@ export function authRoutes(config: BezzieConfig, cache: DiscoveryCache) {
       secure: true,
       sameSite: 'Strict',
       path: '/',
+      maxAge: 30 * 24 * 60 * 60, // 30 days, matches KV session TTL
     })
 
     if (returnTo && returnTo.startsWith('/') && !returnTo.startsWith('//')) {

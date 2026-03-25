@@ -138,6 +138,7 @@ describe('OAuth Routes', () => {
       expect(cookie).toContain('HttpOnly')
       expect(cookie).toContain('Secure')
       expect(cookie).toContain('SameSite=Strict')
+      expect(cookie).toContain('Max-Age=2592000')
 
       // Check session in adapter
       const sessionId = cookie!.match(/__Host-session=([^;]+)/)![1]
