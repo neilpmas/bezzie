@@ -20,7 +20,6 @@ export type Variables = {
   accessToken: string
 }
 
-const jwksCache: oauth.JWKSCacheInput = {}
 
 export function middleware(config: BezzieConfig, cache: DiscoveryCache): MiddlewareHandler<{ Variables: Variables }> {
   const sessionStore = config.adapter
@@ -112,7 +111,7 @@ export function middleware(config: BezzieConfig, cache: DiscoveryCache): Middlew
           },
         })
 
-        await oauth.validateJwtAccessToken(as, mockReq, config.audience, { [oauth.jwksCache]: jwksCache })
+        await oauth.validateJwtAccessToken(as, mockReq, config.audience, { [oauth.jwksCache]: cache.jwksCache })
       } catch {
         // 9. If JWT invalid → return 401
         return c.text('Unauthorized', 401)

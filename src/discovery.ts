@@ -4,10 +4,11 @@ import type { BezzieConfig } from './index'
 export interface DiscoveryCache {
   cachedAS: oauth.AuthorizationServer | null
   cacheExpiresAt: number
+  jwksCache: oauth.JWKSCacheInput
 }
 
 export function createDiscoveryCache(): DiscoveryCache {
-  return { cachedAS: null, cacheExpiresAt: 0 }
+  return { cachedAS: null, cacheExpiresAt: 0, jwksCache: {} }
 }
 
 export async function getAuthorizationServer(
