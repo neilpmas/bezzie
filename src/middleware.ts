@@ -99,7 +99,7 @@ export function middleware(config: BezzieConfig): MiddlewareHandler<{ Variables:
       })
 
       await oauth.validateJwtAccessToken(as, mockReq, config.audience ?? '', { [oauth.jwksCache]: jwksCache })
-    } catch (error) {
+    } catch {
       // 9. If JWT invalid → return 401
       return c.text('Unauthorized', 401)
     }
