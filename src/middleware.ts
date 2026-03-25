@@ -55,17 +55,23 @@ export function middleware(config: BezzieConfig, cache: DiscoveryCache): Middlew
       if (session.refreshToken) {
         try {
           // 6. If expired → use oauth4webapi to perform a refresh token grant
-          const client: oauth.Client = {
-            client_id: config.clientId,
-            client_secret: config.clientSecret,
-            token_endpoint_auth_method: 'client_secret_post',
-          }
+          const client: oauth.Client = { client_id: config.clientId }
+          const clientAuth = oauth.ClientSecretPost(config.clientSecret)
 
-          const response = await oauth.refreshTokenGrantRequest(as, client, session.refreshToken)
-          const result = await oauth.processRefreshTokenResponse(as, client, response)
+          const response = await oauth.refreshTokenGrantRequest(as, client, clientAuth, session.refreshToken)
 
-          if (oauth.isOAuth2Error(result)) {
-            if (result.error === 'invalid_grant') {
+          try {
+            const result = await oauth.processRefreshTokenResponse(as, client, response)
+            // Update the session in KV with new tokens and new expiresAt
+            session.accessToken = result.access_token
+            if (result.refresh_token) {
+              session.refreshToken = result.refresh_token
+            }
+            session.expiresAt = Math.floor(Date.now() / 1000) + (result.expires_in || 3600)
+
+            await sessionStore.set(sessionId, session, config.sessionTtlSeconds ?? 30 * 24 * 60 * 60) // 30 days, matches initial session TTL
+          } catch (err) {
+            if (err instanceof oauth.ResponseBodyError && err.error === 'invalid_grant') {
               // Potential race condition: another request might have already refreshed this token
               const refreshedSession = await sessionStore.get(sessionId)
               if (
@@ -84,15 +90,6 @@ export function middleware(config: BezzieConfig, cache: DiscoveryCache): Middlew
               await sessionStore.delete(sessionId)
               return c.text('Unauthorized', 401)
             }
-          } else {
-            // Update the session in KV with new tokens and new expiresAt
-            session.accessToken = result.access_token
-            if (result.refresh_token) {
-              session.refreshToken = result.refresh_token
-            }
-            session.expiresAt = Math.floor(Date.now() / 1000) + (result.expires_in || 3600)
-
-            await sessionStore.set(sessionId, session, config.sessionTtlSeconds ?? 30 * 24 * 60 * 60) // 30 days, matches initial session TTL
           }
         } catch {
           await sessionStore.delete(sessionId)
