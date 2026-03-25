@@ -113,7 +113,7 @@ export function authRoutes(config: BezzieConfig, cache: DiscoveryCache) {
     return c.redirect('/')
   })
 
-  router.get('/logout', async (c) => {
+  router.post('/logout', async (c) => {
     const sessionId = getCookie(c, '__Host-session')
     if (sessionId) {
       await sessionStore.delete(sessionId)

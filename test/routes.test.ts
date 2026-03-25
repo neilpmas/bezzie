@@ -207,7 +207,7 @@ describe('OAuth Routes', () => {
     })
   })
 
-  describe('GET /logout', () => {
+  describe('POST /logout', () => {
     it('redirects to / if no logout URL can be determined', async () => {
       auth.cache.cachedAS = null
       auth.cache.cacheExpiresAt = 0
@@ -215,7 +215,7 @@ describe('OAuth Routes', () => {
       vi.mocked(oauth.discoveryRequest).mockResolvedValue({} as unknown as Response)
       vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue(mockAs as oauth.AuthorizationServer)
 
-      const res = await app.request('/logout')
+      const res = await app.request('/logout', { method: 'POST' })
       expect(res.status).toBe(302)
       expect(res.headers.get('Location')).toBe('/')
     })
@@ -229,7 +229,7 @@ describe('OAuth Routes', () => {
       vi.mocked(oauth.discoveryRequest).mockResolvedValue({} as unknown as Response)
       vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue(mockAs as oauth.AuthorizationServer)
 
-      const res = await customApp.request('/logout')
+      const res = await customApp.request('/logout', { method: 'POST' })
 
       expect(res.status).toBe(302)
       const location = res.headers.get('Location')
@@ -249,7 +249,7 @@ describe('OAuth Routes', () => {
       vi.mocked(oauth.discoveryRequest).mockResolvedValue({} as unknown as Response)
       vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue(mockAs as oauth.AuthorizationServer)
 
-      const res = await app.request('/logout')
+      const res = await app.request('/logout', { method: 'POST' })
 
       expect(res.status).toBe(302)
       const location = res.headers.get('Location')
@@ -272,6 +272,7 @@ describe('OAuth Routes', () => {
       vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue(mockAs as oauth.AuthorizationServer)
 
       const res = await app.request('/logout', {
+        method: 'POST',
         headers: {
           Cookie: `__Host-session=${sessionId}`,
         },
