@@ -133,7 +133,7 @@ function createBezzie(config: BezzieConfig): Bezzie {
 
   try {
     new URL(config.issuer)
-  } catch (e) {
+  } catch {
     throw new Error('Bezzie: issuer must be a valid URL')
   }
 
