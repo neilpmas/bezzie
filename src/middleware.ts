@@ -71,8 +71,8 @@ export function middleware(config: BezzieConfig, cache: DiscoveryCache): Middlew
       await sessionStore.set(sessionId, session, 30 * 24 * 60 * 60) // 30 days, matches initial session TTL
     }
 
-    // 8. Validate the JWT using JWKS (only if audience is set)
-    if (config.audience) {
+    // 8. Validate the JWT using JWKS (only if audience is set and validation is enabled)
+    if (config.validateAccessToken !== false && config.audience) {
       try {
         // We need a Request object that has the Authorization header for validateJwtAccessToken
         const mockReq = new Request(c.req.raw.url, {

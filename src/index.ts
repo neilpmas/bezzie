@@ -40,6 +40,11 @@ export interface BezzieConfig {
   baseUrl: string
 
   /**
+   * Whether to validate the access token (defaults to true).
+   */
+  validateAccessToken?: boolean
+
+  /**
    * Optional tweaks for specific providers.
    */
   providerHints?: {

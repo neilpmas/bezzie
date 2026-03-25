@@ -254,4 +254,37 @@ describe('Middleware', () => {
     // Should NOT have called validateJwtAccessToken
     expect(oauth.validateJwtAccessToken).not.toHaveBeenCalled()
   })
+
+  it('skips JWT validation when validateAccessToken is false', async () => {
+    const configWithValidateFalse = {
+      issuer,
+      clientId: 'test-client-id',
+      clientSecret: 'test-client-secret',
+      audience: 'https://api.test.com',
+      adapter,
+      baseUrl: 'https://app.test.com',
+      validateAccessToken: false,
+    }
+    const authWithValidateFalse = createBezzie(configWithValidateFalse)
+    const appWithValidateFalse = new Hono()
+    appWithValidateFalse.use('/api/*', authWithValidateFalse.middleware())
+    appWithValidateFalse.get('/api/me', (c) => c.json({ ok: true }))
+
+    const sessionId = 'test-session-id'
+    await adapter.set(sessionId, {
+      accessToken: 'opaque-token',
+      refreshToken: 'valid-refresh',
+      expiresAt: Math.floor(Date.now() / 1000) + 3600,
+      user: { sub: '123' },
+    }, 3600)
+
+    const res = await appWithValidateFalse.request('/api/me', {
+      headers: {
+        Cookie: `sessionId=${sessionId}`,
+      },
+    })
+
+    expect(res.status).toBe(200)
+    expect(oauth.validateJwtAccessToken).not.toHaveBeenCalled()
+  })
 })
