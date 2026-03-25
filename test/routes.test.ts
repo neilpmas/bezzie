@@ -125,7 +125,7 @@ describe('OAuth Routes', () => {
       vi.mocked(oauth.getValidatedIdTokenClaims).mockReturnValue({
         sub: 'user-123',
         email: 'user@example.com',
-      } as oauth.IDTokenClaims)
+      } as unknown as oauth.IDToken)
 
       const res = await app.request(`/callback?state=${state}&code=${code}`)
 
@@ -172,7 +172,7 @@ describe('OAuth Routes', () => {
       } as oauth.OpenIDTokenEndpointResponse)
       vi.mocked(oauth.getValidatedIdTokenClaims).mockReturnValue({
         sub: 'user-123',
-      } as oauth.IDTokenClaims)
+      } as unknown as oauth.IDToken)
 
       const res = await app.request(`/callback?state=${state}&code=${code}`)
 

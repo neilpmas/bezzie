@@ -14,7 +14,7 @@ const mockSession: Session = {
 }
 
 describe('CloudflareKVAdapter', () => {
-  const adapter = new CloudflareKVAdapter(env.SESSION_KV)
+  const adapter = new CloudflareKVAdapter((env as { SESSION_KV: KVNamespace }).SESSION_KV)
 
   it('get returns null for missing key', async () => {
     const session = await adapter.get('non-existent')
