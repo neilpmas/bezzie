@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { Hono } from 'hono'
-import { createBezzie, MemoryAdapter, type Bezzie } from '../src'
+import { createBezzie, MemoryAdapter, type Bezzie, type Variables, type Session } from '../src'
 import * as oauth from 'oauth4webapi'
 
 // Mock oauth4webapi
@@ -19,7 +19,7 @@ vi.mock('oauth4webapi', async () => {
 describe('Middleware', () => {
   let adapter: MemoryAdapter
   let auth: Bezzie
-  let app: Hono
+  let app: Hono<{ Variables: Variables }>
   const issuer = 'https://test.auth0.com'
 
   beforeEach(async () => {
@@ -35,7 +35,7 @@ describe('Middleware', () => {
     }
 
     auth = createBezzie(config)
-    app = new Hono()
+    app = new Hono<{ Variables: Variables }>()
 
     app.use('/api/*', auth.middleware())
     app.get('/api/me', (c) => {
@@ -88,7 +88,7 @@ describe('Middleware', () => {
     })
 
     expect(res.status).toBe(200)
-    const data = await res.json()
+    const data = (await res.json()) as { user?: Record<string, unknown>; accessToken?: string }
     expect(data.user).toEqual(user)
     expect(data.accessToken).toBe('valid-token')
   })
@@ -125,11 +125,11 @@ describe('Middleware', () => {
     })
 
     expect(res.status).toBe(200)
-    const data = await res.json()
+    const data = (await res.json()) as { user?: Record<string, unknown>; accessToken?: string }
     expect(data.accessToken).toBe('new-token')
 
     // Check adapter updated
-    const stored = (await adapter.get(sessionId))!
+    const stored = (await adapter.get(sessionId)) as Session
     expect(stored.accessToken).toBe('new-token')
     expect(stored.refreshToken).toBe('new-refresh')
     expect(stored.expiresAt).toBeGreaterThan(Date.now() / 1000)
@@ -222,7 +222,7 @@ describe('Middleware', () => {
     })
 
     expect(res.status).toBe(200)
-    const data = await res.json()
+    const data = (await res.json()) as { user?: Record<string, unknown>; accessToken?: string }
     expect(data.accessToken).toBe('new-token')
   })
 
@@ -350,7 +350,7 @@ describe('Middleware', () => {
     })
 
     expect(res.status).toBe(200)
-    const data = await res.json()
+    const data = (await res.json()) as { user?: Record<string, unknown>; accessToken?: string }
     expect(data.accessToken).toBe(newAccessToken)
 
     // Verify it was re-read (1st in middleware start, 2nd after invalid_grant)
