@@ -4,6 +4,15 @@
   "description": "BFF OAuth 2.0 auth library for Cloudflare Workers",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -14,11 +23,14 @@
     "build": "tsc",
     "test": "vitest run",
     "lint": "eslint src test --ext .ts",
-    "format": "prettier --write src test"
+    "format": "prettier --write src test",
+    "prepublishOnly": "npm run build && npm test && npm run lint"
   },
   "dependencies": {
-    "hono": "^4.0.0",
     "oauth4webapi": "^2.0.0"
+  },
+  "peerDependencies": {
+    "hono": "^4.0.0"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.5.0",

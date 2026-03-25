@@ -55,8 +55,8 @@ export function middleware(config: BezzieConfig): MiddlewareHandler<{ Variables:
     // 3. Look up the session in KV using SessionStore
     const session = await sessionStore.get(sessionId)
 
-    // 4. If no session found → return 401
-    if (!session) {
+    // 4. If no session found or it's a PKCE state → return 401
+    if (!session || 'codeVerifier' in session) {
       return c.text('Unauthorized', 401)
     }
 

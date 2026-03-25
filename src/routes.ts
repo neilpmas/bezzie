@@ -89,8 +89,8 @@ export function authRoutes(config: BezzieConfig) {
     const response = await oauth.authorizationCodeGrantRequest(
       as,
       client,
-      new URL(`${config.baseUrl}/auth/callback`),
-      code,
+      new URL(c.req.url).searchParams,
+      `${config.baseUrl}/auth/callback`,
       codeVerifier,
     )
 
@@ -108,9 +108,9 @@ export function authRoutes(config: BezzieConfig) {
       refreshToken: refresh_token || '',
       expiresAt: Math.floor(Date.now() / 1000) + (expires_in || 3600),
       user: {
+        ...claims,
         sub: claims.sub,
         email: claims.email as string | undefined,
-        ...claims,
       },
     }
 
