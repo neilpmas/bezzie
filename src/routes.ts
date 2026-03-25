@@ -83,10 +83,14 @@ export function authRoutes(config: BezzieConfig, cache: DiscoveryCache) {
     const { access_token, refresh_token, expires_in } = result
     const claims = oauth.getValidatedIdTokenClaims(result)
 
+    if (!refresh_token) {
+      console.warn('Bezzie: refresh_token is missing from the token response. offline_access may not be enabled or supported by the provider.')
+    }
+
     const sessionId = crypto.randomUUID()
     const session: Session = {
       accessToken: access_token,
-      refreshToken: refresh_token || '',
+      refreshToken: refresh_token,
       expiresAt: Math.floor(Date.now() / 1000) + (expires_in || 3600),
       createdAt: Math.floor(Date.now() / 1000),
       user: {
