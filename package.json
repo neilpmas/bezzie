@@ -27,7 +27,7 @@
     "prepublishOnly": "npm run build && npm test && npm run lint"
   },
   "dependencies": {
-    "oauth4webapi": "^2.0.0"
+    "oauth4webapi": "^3.8.5"
   },
   "peerDependencies": {
     "hono": "^4.0.0"
