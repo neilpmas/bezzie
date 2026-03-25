@@ -10,7 +10,7 @@ vi.mock('oauth4webapi', async () => {
     discoveryRequest: vi.fn(),
     processDiscoveryResponse: vi.fn(),
     authorizationCodeGrantRequest: vi.fn(),
-    processAuthorizationCodeOpenIDResponse: vi.fn(),
+    processAuthorizationCodeResponse: vi.fn(),
     getValidatedIdTokenClaims: vi.fn(),
   }
 })
@@ -116,12 +116,12 @@ describe('OAuth Routes', () => {
       vi.mocked(oauth.discoveryRequest).mockResolvedValue({} as unknown as Response)
       vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue(mockAs as oauth.AuthorizationServer)
       vi.mocked(oauth.authorizationCodeGrantRequest).mockResolvedValue({} as unknown as Response)
-      vi.mocked(oauth.processAuthorizationCodeOpenIDResponse).mockResolvedValue({
+      vi.mocked(oauth.processAuthorizationCodeResponse).mockResolvedValue({
         access_token: 'mock-access-token',
         refresh_token: 'mock-refresh-token',
         expires_in: 3600,
         id_token: 'mock-id-token',
-      } as oauth.OpenIDTokenEndpointResponse)
+      } as oauth.TokenEndpointResponse)
       vi.mocked(oauth.getValidatedIdTokenClaims).mockReturnValue({
         sub: 'user-123',
         email: 'user@example.com',
@@ -166,11 +166,11 @@ describe('OAuth Routes', () => {
       vi.mocked(oauth.discoveryRequest).mockResolvedValue({} as unknown as Response)
       vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue(mockAs as oauth.AuthorizationServer)
       vi.mocked(oauth.authorizationCodeGrantRequest).mockResolvedValue({} as unknown as Response)
-      vi.mocked(oauth.processAuthorizationCodeOpenIDResponse).mockResolvedValue({
+      vi.mocked(oauth.processAuthorizationCodeResponse).mockResolvedValue({
         access_token: 'mock-access-token',
         expires_in: 3600,
         id_token: 'mock-id-token',
-      } as oauth.OpenIDTokenEndpointResponse)
+      } as oauth.TokenEndpointResponse)
       vi.mocked(oauth.getValidatedIdTokenClaims).mockReturnValue({
         sub: 'user-123',
       } as unknown as oauth.IDToken)

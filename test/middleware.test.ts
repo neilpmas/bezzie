@@ -151,9 +151,11 @@ describe('Middleware', () => {
 
     // Mock failed refresh
     vi.mocked(oauth.refreshTokenGrantRequest).mockResolvedValue({} as Response)
-    vi.mocked(oauth.processRefreshTokenResponse).mockResolvedValue({
-      error: 'invalid_grant',
-    } as oauth.OAuth2Error)
+    const error = new oauth.ResponseBodyError('invalid_grant', { 
+      cause: { error: 'invalid_grant' },
+      response: new Response() 
+    })
+    vi.mocked(oauth.processRefreshTokenResponse).mockRejectedValue(error)
 
     const res = await app.request('/api/me', {
       headers: {
@@ -316,9 +318,11 @@ describe('Middleware', () => {
 
     // Mock failed refresh with invalid_grant
     vi.mocked(oauth.refreshTokenGrantRequest).mockResolvedValue({} as Response)
-    vi.mocked(oauth.processRefreshTokenResponse).mockResolvedValue({
-      error: 'invalid_grant',
-    } as oauth.OAuth2Error)
+    const error = new oauth.ResponseBodyError('invalid_grant', { 
+      cause: { error: 'invalid_grant' },
+      response: new Response() 
+    })
+    vi.mocked(oauth.processRefreshTokenResponse).mockRejectedValue(error)
     vi.mocked(oauth.validateJwtAccessToken).mockResolvedValue({} as oauth.JWTAccessTokenClaims)
 
     const originalGet = adapter.get.bind(adapter)

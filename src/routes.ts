@@ -61,23 +61,26 @@ export function authRoutes(config: BezzieConfig, cache: DiscoveryCache) {
 
     const as = await getAuthorizationServer(config, cache)
 
-    const client: oauth.Client = {
-      client_id: config.clientId,
-      client_secret: config.clientSecret,
-      token_endpoint_auth_method: 'client_secret_post',
-    }
+    const client: oauth.Client = { client_id: config.clientId }
+    const clientAuth = oauth.ClientSecretPost(config.clientSecret)
 
     const response = await oauth.authorizationCodeGrantRequest(
       as,
       client,
+      clientAuth,
       new URL(c.req.url).searchParams,
       `${config.baseUrl}/auth/callback`,
       codeVerifier,
     )
 
-    const result = await oauth.processAuthorizationCodeOpenIDResponse(as, client, response)
-    if (oauth.isOAuth2Error(result)) {
-      return c.text('OAuth 2.0 error', 400)
+    let result: oauth.TokenEndpointResponse
+    try {
+      result = await oauth.processAuthorizationCodeResponse(as, client, response)
+    } catch (err) {
+      if (err instanceof oauth.ResponseBodyError) {
+        return c.text('OAuth 2.0 error', 400)
+      }
+      throw err
     }
 
     const { access_token, refresh_token, expires_in, id_token } = result
