@@ -63,6 +63,36 @@ export interface BezzieConfig {
      */
     tokenEndpoint?: string
   }
+
+  /**
+   * Session TTL in seconds.
+   * @default 60 * 60 * 24 * 30 (30 days)
+   */
+  sessionTtlSeconds?: number
+
+  /**
+   * PKCE state TTL in seconds.
+   * @default 60 * 10 (10 minutes)
+   */
+  pkceStateTtlSeconds?: number
+
+  /**
+   * Session cookie name.
+   * @default '__Host-session'
+   */
+  cookieName?: string
+
+  /**
+   * OAuth scopes to request.
+   * @default ['openid', 'profile', 'email', 'offline_access']
+   */
+  scopes?: string[]
+
+  /**
+   * Buffer in seconds for refreshing the access token before it expires.
+   * @default 60
+   */
+  refreshBufferSeconds?: number
 }
 
 /**

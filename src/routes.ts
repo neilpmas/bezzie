@@ -17,7 +17,7 @@ export function authRoutes(config: BezzieConfig, cache: DiscoveryCache) {
     const returnTo = c.req.query('returnTo')
 
     // Store state and codeVerifier in adapter
-    await config.adapter.set(`pkce:${state}`, { codeVerifier: code_verifier, returnTo } as PKCEState, 600) // 10 minutes
+    await config.adapter.set(`pkce:${state}`, { codeVerifier: code_verifier, returnTo } as PKCEState, config.pkceStateTtlSeconds ?? 600) // 10 minutes
 
     const as = await getAuthorizationServer(config, cache)
     if (!as.authorization_endpoint) {
@@ -28,7 +28,7 @@ export function authRoutes(config: BezzieConfig, cache: DiscoveryCache) {
     authorizationUrl.searchParams.set('client_id', config.clientId)
     authorizationUrl.searchParams.set('response_type', 'code')
     authorizationUrl.searchParams.set('redirect_uri', `${config.baseUrl}/auth/callback`)
-    authorizationUrl.searchParams.set('scope', 'openid profile email offline_access')
+    authorizationUrl.searchParams.set('scope', (config.scopes ?? ['openid', 'profile', 'email', 'offline_access']).join(' '))
     authorizationUrl.searchParams.set('state', state)
     authorizationUrl.searchParams.set('code_challenge', code_challenge)
     authorizationUrl.searchParams.set('code_challenge_method', 'S256')
@@ -97,14 +97,14 @@ export function authRoutes(config: BezzieConfig, cache: DiscoveryCache) {
     }
 
     // TTL for session in KV. Set to 30 days as per bug fix 3.
-    await sessionStore.set(sessionId, session, 30 * 24 * 60 * 60)
+    await sessionStore.set(sessionId, session, config.sessionTtlSeconds ?? 30 * 24 * 60 * 60)
 
-    setCookie(c, '__Host-session', sessionId, {
+    setCookie(c, config.cookieName ?? '__Host-session', sessionId, {
       httpOnly: true,
       secure: true,
       sameSite: 'Strict',
       path: '/',
-      maxAge: 30 * 24 * 60 * 60, // 30 days, matches KV session TTL
+      maxAge: config.sessionTtlSeconds ?? 30 * 24 * 60 * 60, // 30 days, matches KV session TTL
     })
 
     if (returnTo && returnTo.startsWith('/') && !returnTo.startsWith('//')) {
@@ -115,12 +115,12 @@ export function authRoutes(config: BezzieConfig, cache: DiscoveryCache) {
   })
 
   router.post('/logout', async (c) => {
-    const sessionId = getCookie(c, '__Host-session')
+    const sessionId = getCookie(c, config.cookieName ?? '__Host-session')
     if (sessionId) {
       await sessionStore.delete(sessionId)
     }
 
-    deleteCookie(c, '__Host-session', {
+    deleteCookie(c, config.cookieName ?? '__Host-session', {
       path: '/',
       secure: true,
     })

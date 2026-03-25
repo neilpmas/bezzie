@@ -27,7 +27,7 @@ export function middleware(config: BezzieConfig, cache: DiscoveryCache): Middlew
 
   return async (c, next) => {
     // 1. Read the sessionId cookie from the request
-    const sessionId = getCookie(c, '__Host-session')
+    const sessionId = getCookie(c, config.cookieName ?? '__Host-session')
 
     // 2. If no cookie → return 401
     if (!sessionId) {
@@ -51,8 +51,8 @@ export function middleware(config: BezzieConfig, cache: DiscoveryCache): Middlew
 
     const as = await getAuthorizationServer(config, cache)
 
-    // 5. Check if the access token is expired (with 60s buffer)
-    if (session.expiresAt < (Date.now() / 1000) + 60) {
+    // 5. Check if the access token is expired (with configurable buffer)
+    if (session.expiresAt < (Date.now() / 1000) + (config.refreshBufferSeconds ?? 60)) {
       try {
         // 6. If expired → use oauth4webapi to perform a refresh token grant
         const client: oauth.Client = {
@@ -92,7 +92,7 @@ export function middleware(config: BezzieConfig, cache: DiscoveryCache): Middlew
           }
           session.expiresAt = Math.floor(Date.now() / 1000) + (result.expires_in || 3600)
 
-          await sessionStore.set(sessionId, session, 30 * 24 * 60 * 60) // 30 days, matches initial session TTL
+          await sessionStore.set(sessionId, session, config.sessionTtlSeconds ?? 30 * 24 * 60 * 60) // 30 days, matches initial session TTL
         }
       } catch {
         await sessionStore.delete(sessionId)
