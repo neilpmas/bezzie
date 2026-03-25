@@ -2,6 +2,8 @@
 
 **Bezzie** — your BFF's BFF. Handles the Backend for Frontend OAuth pattern so you don't have to.
 
+[![npm downloads](https://img.shields.io/npm/dw/bezzie)](https://www.npmjs.com/package/bezzie)
+
 A BFF (Backend for Frontend) OAuth 2.0 auth library for Cloudflare Workers.
 
 Implements the [OAuth 2.0 for Browser-Based Apps (BCP212)](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-browser-based-apps) pattern — JWTs never touch the browser. The BFF owns the OAuth flow and issues a session cookie to the frontend instead.
@@ -9,6 +11,48 @@ Implements the [OAuth 2.0 for Browser-Based Apps (BCP212)](https://datatracker.i
 ```
 npm install bezzie
 ```
+
+## Get started in 5 minutes
+
+**1. Install:**
+```sh
+npm install bezzie
+```
+
+**2. Add a KV namespace to `wrangler.toml`:**
+```toml
+[[kv_namespaces]]
+binding = "SESSION_KV"
+id = "<your-kv-namespace-id>"
+```
+
+**3. Add your client secret:**
+```sh
+wrangler secret put AUTH0_CLIENT_SECRET
+```
+
+**4. Wire it up:**
+```typescript
+import { createBezzie, providers, cloudflareKV } from 'bezzie'
+
+const auth = createBezzie({
+  ...providers.auth0('your-tenant.auth0.com'),
+  clientId: 'xxx',
+  clientSecret: env.AUTH0_CLIENT_SECRET,
+  adapter: cloudflareKV(env.SESSION_KV),
+  baseUrl: 'https://app.yourproject.com',
+})
+
+app.route('/auth', auth.routes())
+app.use('/api/*', auth.middleware())
+```
+
+**5. Protect a route:**
+```typescript
+app.get('/api/me', (c) => c.json(c.var.user))
+```
+
+Done. Your app now has BCP212-compliant BFF auth.
 
 ---
 
