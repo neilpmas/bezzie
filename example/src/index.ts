@@ -46,12 +46,17 @@ export default {
       
       const accessToken = c.var.accessToken
 
+      const headers: Record<string, string> = {}
+      const allow = ['content-type', 'accept', 'authorization']
+      for (const key of allow) {
+        const val = c.req.header(key)
+        if (val) headers[key] = val
+      }
+      headers['authorization'] = `Bearer ${accessToken}`
+
       return fetch(target, {
         method: c.req.method,
-        headers: {
-          ...c.req.header(),
-          'Authorization': `Bearer ${accessToken}`
-        },
+        headers,
         body: c.req.raw.body
       })
     })

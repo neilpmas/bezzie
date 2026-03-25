@@ -17,7 +17,7 @@ export function authRoutes(config: BezzieConfig, cache: DiscoveryCache) {
     const returnTo = c.req.query('returnTo')
 
     // Store state and codeVerifier in adapter
-    await config.adapter.set(`pkce:${state}`, { codeVerifier: code_verifier, returnTo } as PKCEState, 600) // 10 minutes
+    await config.adapter.set(`pkce:${state}`, { codeVerifier: code_verifier, returnTo } as PKCEState, config.pkceStateTtlSeconds ?? 600) // 10 minutes
 
     const as = await getAuthorizationServer(config, cache)
     if (!as.authorization_endpoint) {
@@ -28,7 +28,7 @@ export function authRoutes(config: BezzieConfig, cache: DiscoveryCache) {
     authorizationUrl.searchParams.set('client_id', config.clientId)
     authorizationUrl.searchParams.set('response_type', 'code')
     authorizationUrl.searchParams.set('redirect_uri', `${config.baseUrl}/auth/callback`)
-    authorizationUrl.searchParams.set('scope', 'openid profile email offline_access')
+    authorizationUrl.searchParams.set('scope', (config.scopes ?? ['openid', 'profile', 'email', 'offline_access']).join(' '))
     authorizationUrl.searchParams.set('state', state)
     authorizationUrl.searchParams.set('code_challenge', code_challenge)
     authorizationUrl.searchParams.set('code_challenge_method', 'S256')
@@ -80,13 +80,18 @@ export function authRoutes(config: BezzieConfig, cache: DiscoveryCache) {
       return c.text('OAuth 2.0 error', 400)
     }
 
-    const { access_token, refresh_token, expires_in } = result
+    const { access_token, refresh_token, expires_in, id_token } = result
     const claims = oauth.getValidatedIdTokenClaims(result)
+
+    if (!refresh_token) {
+      console.warn('Bezzie: refresh_token is missing from the token response. offline_access may not be enabled or supported by the provider.')
+    }
 
     const sessionId = crypto.randomUUID()
     const session: Session = {
       accessToken: access_token,
-      refreshToken: refresh_token || '',
+      refreshToken: refresh_token,
+      idToken: id_token,
       expiresAt: Math.floor(Date.now() / 1000) + (expires_in || 3600),
       createdAt: Math.floor(Date.now() / 1000),
       user: {
@@ -97,14 +102,14 @@ export function authRoutes(config: BezzieConfig, cache: DiscoveryCache) {
     }
 
     // TTL for session in KV. Set to 30 days as per bug fix 3.
-    await sessionStore.set(sessionId, session, 30 * 24 * 60 * 60)
+    await sessionStore.set(sessionId, session, config.sessionTtlSeconds ?? 30 * 24 * 60 * 60)
 
-    setCookie(c, '__Host-session', sessionId, {
+    setCookie(c, config.cookieName ?? '__Host-session', sessionId, {
       httpOnly: true,
       secure: true,
       sameSite: 'Strict',
       path: '/',
-      maxAge: 30 * 24 * 60 * 60, // 30 days, matches KV session TTL
+      maxAge: config.sessionTtlSeconds ?? 30 * 24 * 60 * 60, // 30 days, matches KV session TTL
     })
 
     if (returnTo && returnTo.startsWith('/') && !returnTo.startsWith('//')) {
@@ -115,12 +120,17 @@ export function authRoutes(config: BezzieConfig, cache: DiscoveryCache) {
   })
 
   router.post('/logout', async (c) => {
-    const sessionId = getCookie(c, '__Host-session')
+    const sessionId = getCookie(c, config.cookieName ?? '__Host-session')
+    let idToken: string | undefined
     if (sessionId) {
+      const session = await sessionStore.get(sessionId)
+      if (session && !('codeVerifier' in session)) {
+        idToken = (session as Session).idToken
+      }
       await sessionStore.delete(sessionId)
     }
 
-    deleteCookie(c, '__Host-session', {
+    deleteCookie(c, config.cookieName ?? '__Host-session', {
       path: '/',
       secure: true,
     })
@@ -132,10 +142,16 @@ export function authRoutes(config: BezzieConfig, cache: DiscoveryCache) {
       logoutUrl = new URL(config.providerHints.logoutUrl)
       logoutUrl.searchParams.set('client_id', config.clientId)
       logoutUrl.searchParams.set('returnTo', config.baseUrl)
+      if (idToken) {
+        logoutUrl.searchParams.set('id_token_hint', idToken)
+      }
     } else if (as.end_session_endpoint) {
       logoutUrl = new URL(as.end_session_endpoint)
       logoutUrl.searchParams.set('client_id', config.clientId)
       logoutUrl.searchParams.set('post_logout_redirect_uri', config.baseUrl)
+      if (idToken) {
+        logoutUrl.searchParams.set('id_token_hint', idToken)
+      }
     } else {
       // If no endpoint found, we just redirect to base URL
       return c.redirect('/')

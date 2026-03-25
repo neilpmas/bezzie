@@ -145,6 +145,7 @@ describe('OAuth Routes', () => {
       const session = await adapter.get(sessionId) as Session
       expect(session).toBeDefined()
       expect(session!.accessToken).toBe('mock-access-token')
+      expect(session!.idToken).toBe('mock-id-token')
       expect(session!.user.sub).toBe('user-123')
       expect(session!.createdAt).toBeTypeOf('number')
       expect(session!.createdAt).toBeLessThanOrEqual(Math.floor(Date.now() / 1000))
@@ -260,13 +261,15 @@ describe('OAuth Routes', () => {
       expect(location).toContain(`post_logout_redirect_uri=${encodeURIComponent(config.baseUrl)}`)
     })
 
-    it('with valid session cookie - deletes session from adapter, clears cookie', async () => {
+    it('with valid session cookie - deletes session from adapter, clears cookie, and adds id_token_hint', async () => {
       auth.cache.cachedAS = null
       auth.cache.cacheExpiresAt = 0
       const sessionId = 'test-session-id'
+      const idToken = 'mock-id-token'
       await adapter.set(sessionId, { 
         accessToken: 'test',
         refreshToken: 'refresh',
+        idToken,
         expiresAt: Math.floor(Date.now() / 1000) + 3600,
         createdAt: Math.floor(Date.now() / 1000),
         user: { sub: 'user-123' },
@@ -287,6 +290,8 @@ describe('OAuth Routes', () => {
       })
 
       expect(res.status).toBe(302)
+      const location = res.headers.get('Location')
+      expect(location).toContain(`id_token_hint=${idToken}`)
 
       // Check cookie cleared
       const setCookie = res.headers.get('Set-Cookie')
@@ -295,6 +300,38 @@ describe('OAuth Routes', () => {
 
       // Check session deleted from adapter
       expect(await adapter.get(sessionId)).toBeNull()
+    })
+    it('uses providerHints.logoutUrl and adds id_token_hint if session present', async () => {
+      const customConfig = { ...config, providerHints: { logoutUrl: 'https://test.auth0.com/v2/logout' } }
+      const customAuth = createBezzie(customConfig)
+      const customApp = customAuth.routes()
+
+      const sessionId = 'test-session-id'
+      const idToken = 'mock-id-token'
+      await adapter.set(sessionId, { 
+        accessToken: 'test',
+        idToken,
+        expiresAt: Math.floor(Date.now() / 1000) + 3600,
+        createdAt: Math.floor(Date.now() / 1000),
+        user: { sub: 'user-123' },
+      } as Session, 3600)
+
+      const mockAs = { issuer: customConfig.issuer }
+      vi.mocked(oauth.discoveryRequest).mockResolvedValue({} as unknown as Response)
+      vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue(mockAs as oauth.AuthorizationServer)
+
+      const res = await customApp.request('/logout', { 
+        method: 'POST',
+        headers: {
+          Cookie: `__Host-session=${sessionId}`,
+        },
+      })
+
+      expect(res.status).toBe(302)
+      const location = res.headers.get('Location')
+      expect(location).toContain('https://test.auth0.com/v2/logout')
+      expect(location).toContain(`client_id=${customConfig.clientId}`)
+      expect(location).toContain(`id_token_hint=${idToken}`)
     })
   })
 })
