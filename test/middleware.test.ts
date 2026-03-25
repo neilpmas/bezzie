@@ -57,7 +57,7 @@ describe('Middleware', () => {
   it('returns 401 with invalid session (not in KV)', async () => {
     const res = await app.request('/api/me', {
       headers: {
-        Cookie: 'sessionId=non-existent',
+        Cookie: '__Host-session=non-existent',
       },
     })
     expect(res.status).toBe(401)
@@ -82,7 +82,7 @@ describe('Middleware', () => {
 
     const res = await app.request('/api/me', {
       headers: {
-        Cookie: `sessionId=${sessionId}`,
+        Cookie: `__Host-session=${sessionId}`,
       },
     })
 
@@ -118,7 +118,7 @@ describe('Middleware', () => {
 
     const res = await app.request('/api/me', {
       headers: {
-        Cookie: `sessionId=${sessionId}`,
+        Cookie: `__Host-session=${sessionId}`,
       },
     })
 
@@ -154,7 +154,7 @@ describe('Middleware', () => {
 
     const res = await app.request('/api/me', {
       headers: {
-        Cookie: `sessionId=${sessionId}`,
+        Cookie: `__Host-session=${sessionId}`,
       },
     })
 
@@ -182,7 +182,7 @@ describe('Middleware', () => {
 
     const res = await app.request('/api/me', {
       headers: {
-        Cookie: `sessionId=${sessionId}`,
+        Cookie: `__Host-session=${sessionId}`,
       },
     })
 
@@ -212,7 +212,7 @@ describe('Middleware', () => {
 
     const res = await app.request('/api/me', {
       headers: {
-        Cookie: `sessionId=${sessionId}`,
+        Cookie: `__Host-session=${sessionId}`,
       },
     })
 
@@ -246,7 +246,7 @@ describe('Middleware', () => {
 
     const res = await appNoAudience.request('/api/me', {
       headers: {
-        Cookie: `sessionId=${sessionId}`,
+        Cookie: `__Host-session=${sessionId}`,
       },
     })
 
@@ -280,7 +280,7 @@ describe('Middleware', () => {
 
     const res = await appWithValidateFalse.request('/api/me', {
       headers: {
-        Cookie: `sessionId=${sessionId}`,
+        Cookie: `__Host-session=${sessionId}`,
       },
     })
 
@@ -336,7 +336,7 @@ describe('Middleware', () => {
 
     const res = await app.request('/api/me', {
       headers: {
-        Cookie: `sessionId=${sessionId}`,
+        Cookie: `__Host-session=${sessionId}`,
       },
     })
 

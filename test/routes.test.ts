@@ -134,13 +134,13 @@ describe('OAuth Routes', () => {
       
       // Check cookie
       const cookie = res.headers.get('Set-Cookie')
-      expect(cookie).toContain('sessionId=')
+      expect(cookie).toContain('__Host-session=')
       expect(cookie).toContain('HttpOnly')
       expect(cookie).toContain('Secure')
       expect(cookie).toContain('SameSite=Strict')
 
       // Check session in adapter
-      const sessionId = cookie!.match(/sessionId=([^;]+)/)![1]
+      const sessionId = cookie!.match(/__Host-session=([^;]+)/)![1]
       const session = await adapter.get(sessionId) as Session
       expect(session).toBeDefined()
       expect(session!.accessToken).toBe('mock-access-token')
@@ -272,7 +272,7 @@ describe('OAuth Routes', () => {
 
       const res = await app.request('/logout', {
         headers: {
-          Cookie: `sessionId=${sessionId}`,
+          Cookie: `__Host-session=${sessionId}`,
         },
       })
 
@@ -280,7 +280,7 @@ describe('OAuth Routes', () => {
 
       // Check cookie cleared
       const setCookie = res.headers.get('Set-Cookie')
-      expect(setCookie).toContain('sessionId=;')
+      expect(setCookie).toContain('__Host-session=;')
       expect(setCookie).toContain('Max-Age=0')
 
       // Check session deleted from adapter

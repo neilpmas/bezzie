@@ -98,7 +98,7 @@ export function authRoutes(config: BezzieConfig, cache: DiscoveryCache) {
     // TTL for session in KV. Set to 30 days as per bug fix 3.
     await sessionStore.set(sessionId, session, 30 * 24 * 60 * 60)
 
-    setCookie(c, 'sessionId', sessionId, {
+    setCookie(c, '__Host-session', sessionId, {
       httpOnly: true,
       secure: true,
       sameSite: 'Strict',
@@ -113,12 +113,12 @@ export function authRoutes(config: BezzieConfig, cache: DiscoveryCache) {
   })
 
   router.get('/logout', async (c) => {
-    const sessionId = getCookie(c, 'sessionId')
+    const sessionId = getCookie(c, '__Host-session')
     if (sessionId) {
       await sessionStore.delete(sessionId)
     }
 
-    deleteCookie(c, 'sessionId', {
+    deleteCookie(c, '__Host-session', {
       path: '/',
       secure: true,
     })

@@ -27,7 +27,7 @@ export function middleware(config: BezzieConfig, cache: DiscoveryCache): Middlew
 
   return async (c, next) => {
     // 1. Read the sessionId cookie from the request
-    const sessionId = getCookie(c, 'sessionId')
+    const sessionId = getCookie(c, '__Host-session')
 
     // 2. If no cookie → return 401
     if (!sessionId) {
