@@ -86,6 +86,10 @@ export function authRoutes(config: BezzieConfig, cache: DiscoveryCache) {
     const { access_token, refresh_token, expires_in, id_token } = result
     const claims = oauth.getValidatedIdTokenClaims(result)
 
+    if (!claims) {
+      return c.json({ error: 'id_token missing from token response' }, 500)
+    }
+
     if (!refresh_token) {
       console.warn('Bezzie: refresh_token is missing from the token response. offline_access may not be enabled or supported by the provider.')
     }
