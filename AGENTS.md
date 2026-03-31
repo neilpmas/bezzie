@@ -26,6 +26,24 @@ Always run `npm run build && npm test && npm run lint` after every change. All t
 - TypeScript strict mode — no `any`, zero lint warnings
 - Tests use `MemoryAdapter` — never use real KV in tests
 - Do not commit or push — Neil does that
+- Update `CHANGELOG.md` for every change — add an entry under `## Unreleased` describing what was changed and why. Use the format below.
+
+## CHANGELOG format
+
+```markdown
+## Unreleased
+
+### Added
+- `optionalMiddleware()` — middleware that sets user context if a session exists but always calls next()
+
+### Fixed
+- Session ID now uses 128-bit entropy (was 122-bit from randomUUID)
+
+### Changed
+- `deleteCookie` now mirrors all cookie flags from the original set call
+```
+
+Entries go under `Added`, `Fixed`, or `Changed`. Keep them concise — one line each. If `CHANGELOG.md` does not exist yet, create it with an `## Unreleased` section at the top.
 
 ## Architecture
 
