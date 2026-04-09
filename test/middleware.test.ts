@@ -69,6 +69,7 @@ describe('Middleware', () => {
     await adapter.set(
       sessionId,
       {
+        _type: 'session',
         accessToken: 'valid-token',
         refreshToken: 'valid-refresh',
         expiresAt: Math.floor(Date.now() / 1000) + 3600,
@@ -99,6 +100,7 @@ describe('Middleware', () => {
     await adapter.set(
       sessionId,
       {
+        _type: 'session',
         accessToken: 'expired-token',
         refreshToken: 'valid-refresh',
         expiresAt: Math.floor(Date.now() / 1000) - 10, // expired 10s ago
@@ -140,6 +142,7 @@ describe('Middleware', () => {
     await adapter.set(
       sessionId,
       {
+        _type: 'session',
         accessToken: 'expired-token',
         refreshToken: 'invalid-refresh',
         expiresAt: Math.floor(Date.now() / 1000) - 10,
@@ -174,6 +177,7 @@ describe('Middleware', () => {
     await adapter.set(
       sessionId,
       {
+        _type: 'session',
         accessToken: 'invalid-jwt',
         refreshToken: 'refresh',
         expiresAt: Math.floor(Date.now() / 1000) + 3600,
@@ -200,6 +204,7 @@ describe('Middleware', () => {
     await adapter.set(
       sessionId,
       {
+        _type: 'session',
         accessToken: 'near-expiry-token',
         refreshToken: 'valid-refresh',
         expiresAt: Math.floor(Date.now() / 1000) + 30, // expires in 30s
@@ -245,6 +250,7 @@ describe('Middleware', () => {
 
     const sessionId = 'test-session-id'
     await adapter.set(sessionId, {
+      _type: 'session',
       accessToken: 'valid-token',
       refreshToken: 'valid-refresh',
       expiresAt: Math.floor(Date.now() / 1000) + 3600,
@@ -280,6 +286,7 @@ describe('Middleware', () => {
 
     const sessionId = 'test-session-id'
     await adapter.set(sessionId, {
+      _type: 'session',
       accessToken: 'opaque-token',
       refreshToken: 'valid-refresh',
       expiresAt: Math.floor(Date.now() / 1000) + 3600,
@@ -307,6 +314,7 @@ describe('Middleware', () => {
     await adapter.set(
       sessionId,
       {
+        _type: 'session',
         accessToken: oldAccessToken,
         refreshToken: 'valid-refresh',
         expiresAt: Math.floor(Date.now() / 1000) + 30, // expires in 30s
@@ -335,6 +343,7 @@ describe('Middleware', () => {
         await adapter.set(
           id,
           {
+            _type: 'session',
             accessToken: newAccessToken,
             refreshToken: 'new-refresh',
             expiresAt: Math.floor(Date.now() / 1000) + 3600,
@@ -367,6 +376,7 @@ describe('Middleware', () => {
     await adapter.set(
       sessionId,
       {
+        _type: 'session',
         accessToken: 'token',
         refreshToken: 'refresh',
         expiresAt: Math.floor(Date.now() / 1000) + 3600,
@@ -407,6 +417,7 @@ describe('Middleware', () => {
     await adapter.set(
       sessionId,
       {
+        _type: 'session',
         accessToken: 'token',
         refreshToken: 'refresh',
         expiresAt: Math.floor(Date.now() / 1000) + 3600,

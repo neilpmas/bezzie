@@ -37,7 +37,7 @@ export function middleware(config: BezzieConfig, cache: DiscoveryCache): Middlew
     let session = await sessionStore.get(sessionId)
 
     // 4. If no session found or it's a PKCE state → return 401
-    if (!session || 'codeVerifier' in session) {
+    if (!session || session._type === 'pkce') {
       return c.text('Unauthorized', 401)
     }
 
@@ -76,7 +76,7 @@ export function middleware(config: BezzieConfig, cache: DiscoveryCache): Middlew
               const refreshedSession = await sessionStore.get(sessionId)
               if (
                 refreshedSession &&
-                !('codeVerifier' in refreshedSession) &&
+                refreshedSession._type === 'session' &&
                 refreshedSession.accessToken !== session.accessToken
               ) {
                 // Someone else already refreshed it! Use that session.

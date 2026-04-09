@@ -17,7 +17,7 @@ export function authRoutes(config: BezzieConfig, cache: DiscoveryCache) {
     const returnTo = c.req.query('returnTo')
 
     // Store state and codeVerifier in adapter
-    await config.adapter.set(`pkce:${state}`, { codeVerifier: code_verifier, returnTo } as PKCEState, config.pkceStateTtlSeconds ?? 600) // 10 minutes
+    await config.adapter.set(`pkce:${state}`, { _type: 'pkce', codeVerifier: code_verifier, returnTo } as PKCEState, config.pkceStateTtlSeconds ?? 600) // 10 minutes
 
     const as = await getAuthorizationServer(config, cache)
     if (!as.authorization_endpoint) {
@@ -103,6 +103,7 @@ export function authRoutes(config: BezzieConfig, cache: DiscoveryCache) {
       .map((b) => b.toString(16).padStart(2, '0'))
       .join('')
     const session: Session = {
+      _type: 'session',
       accessToken: access_token,
       refreshToken: refresh_token,
       idToken: id_token,
@@ -138,7 +139,7 @@ export function authRoutes(config: BezzieConfig, cache: DiscoveryCache) {
     let idToken: string | undefined
     if (sessionId) {
       const session = await sessionStore.get(sessionId)
-      if (session && !('codeVerifier' in session)) {
+      if (session && session._type === 'session') {
         idToken = (session as Session).idToken
       }
       await sessionStore.delete(sessionId)

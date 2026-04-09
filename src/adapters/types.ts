@@ -5,6 +5,10 @@ import { Session } from '../session'
  */
 export interface PKCEState {
   /**
+   * Internal type discriminant.
+   */
+  _type: 'pkce'
+  /**
    * Code verifier for PKCE.
    */
   codeVerifier: string

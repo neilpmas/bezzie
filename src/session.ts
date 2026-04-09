@@ -3,6 +3,10 @@
  */
 export interface Session {
   /**
+   * Internal type discriminant.
+   */
+  _type: 'session'
+  /**
    * OAuth access token.
    */
   accessToken: string

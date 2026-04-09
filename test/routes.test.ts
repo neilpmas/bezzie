@@ -121,7 +121,7 @@ describe('OAuth Routes', () => {
       const code = 'test-code'
       const codeVerifier = 'test-verifier'
       
-      await adapter.set(`pkce:${state}`, { codeVerifier } as PKCEState, 600)
+      await adapter.set(`pkce:${state}`, { _type: 'pkce', codeVerifier } as PKCEState, 600)
 
       // Setup mocks
       const mockAs = { issuer: config.issuer }
@@ -171,7 +171,7 @@ describe('OAuth Routes', () => {
       const codeVerifier = 'test-verifier'
       const returnTo = '/dashboard'
       
-      await adapter.set(`pkce:${state}`, { codeVerifier, returnTo } as PKCEState, 600)
+      await adapter.set(`pkce:${state}`, { _type: 'pkce', codeVerifier, returnTo } as PKCEState, 600)
 
       // Setup mocks
       const mockAs = { issuer: config.issuer }
@@ -199,7 +199,7 @@ describe('OAuth Routes', () => {
       const codeVerifier = 'test-verifier'
       const returnTo = 'https://evil.com/malicious'
       
-      await adapter.set(`pkce:${state}`, { codeVerifier, returnTo } as PKCEState, 600)
+      await adapter.set(`pkce:${state}`, { _type: 'pkce', codeVerifier, returnTo } as PKCEState, 600)
 
       const res = await app.request(`/callback?state=${state}&code=${code}`)
 
@@ -213,7 +213,7 @@ describe('OAuth Routes', () => {
       const codeVerifier = 'test-verifier'
       const returnTo = '//evil.com'
       
-      await adapter.set(`pkce:${state}`, { codeVerifier, returnTo } as PKCEState, 600)
+      await adapter.set(`pkce:${state}`, { _type: 'pkce', codeVerifier, returnTo } as PKCEState, 600)
 
       const res = await app.request(`/callback?state=${state}&code=${code}`)
 
@@ -279,6 +279,7 @@ describe('OAuth Routes', () => {
       const sessionId = 'test-session-id'
       const idToken = 'mock-id-token'
       await adapter.set(sessionId, { 
+        _type: 'session',
         accessToken: 'test',
         refreshToken: 'refresh',
         idToken,
@@ -324,6 +325,7 @@ describe('OAuth Routes', () => {
       const sessionId = 'test-session-id'
       const idToken = 'mock-id-token'
       await adapter.set(sessionId, { 
+        _type: 'session',
         accessToken: 'test',
         idToken,
         expiresAt: Math.floor(Date.now() / 1000) + 3600,
