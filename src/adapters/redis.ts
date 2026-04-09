@@ -7,16 +7,22 @@ export interface RedisClient {
   del(key: string): Promise<unknown>
 }
 
-export class RedisAdapter implements SessionAdapter {
+export class RedisAdapter<TUser extends Record<string, unknown> = Record<string, unknown>>
+  implements SessionAdapter<TUser>
+{
   constructor(private redis: RedisClient) {}
 
-  async get(sessionId: string): Promise<Session | PKCEState | null> {
+  async get(sessionId: string): Promise<Session<TUser> | PKCEState | null> {
     const session = await this.redis.get(sessionId)
     if (!session) return null
-    return JSON.parse(session) as Session | PKCEState
+    return JSON.parse(session) as Session<TUser> | PKCEState
   }
 
-  async set(sessionId: string, session: Session | PKCEState, ttlSeconds: number): Promise<void> {
+  async set(
+    sessionId: string,
+    session: Session<TUser> | PKCEState,
+    ttlSeconds: number
+  ): Promise<void> {
     await this.redis.set(sessionId, JSON.stringify(session), { ex: ttlSeconds })
   }
 

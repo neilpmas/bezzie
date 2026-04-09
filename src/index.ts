@@ -8,7 +8,7 @@ import { CloudflareKVAdapter, type SessionAdapter } from './session'
 /**
  * Configuration for Bezzie.
  */
-export interface BezzieConfig {
+export interface BezzieConfig<TUser extends Record<string, unknown> = Record<string, unknown>> {
   /**
    * Your OIDC provider issuer URL (e.g. `https://tenant.auth0.com`).
    */
@@ -32,7 +32,7 @@ export interface BezzieConfig {
   /**
    * Session adapter (e.g. `cloudflareKV(env.SESSION_KV)`).
    */
-  adapter: SessionAdapter
+  adapter: SessionAdapter<TUser>
 
   /**
    * Base URL of your application (used for callback and redirects).
@@ -134,14 +134,16 @@ export const providers = {
 /**
  * Creates a Cloudflare KV session adapter.
  */
-function cloudflareKV(kv: KVNamespace): SessionAdapter {
-  return new CloudflareKVAdapter(kv)
+function cloudflareKV<TUser extends Record<string, unknown> = Record<string, unknown>>(
+  kv: KVNamespace
+): SessionAdapter<TUser> {
+  return new CloudflareKVAdapter<TUser>(kv)
 }
 
 /**
  * The main Bezzie interface.
  */
-export interface Bezzie {
+export interface Bezzie<TUser extends Record<string, unknown> = Record<string, unknown>> {
   /**
    * Returns a Hono app containing the auth routes (/login, /callback, /logout).
    */
@@ -150,12 +152,12 @@ export interface Bezzie {
   /**
    * Returns a Hono middleware that protects routes and manages sessions.
    */
-  middleware: () => MiddlewareHandler<{ Variables: Variables }>
+  middleware: () => MiddlewareHandler<{ Variables: Variables<TUser> }>
 
   /**
    * Returns a Hono middleware that sets user context if a session exists but always calls next().
    */
-  optionalMiddleware: () => MiddlewareHandler<{ Variables: Variables }>
+  optionalMiddleware: () => MiddlewareHandler<{ Variables: Variables<TUser> }>
 
   /**
    * Internal discovery cache.
@@ -171,10 +173,12 @@ export interface Bezzie {
  * @returns Bezzie instance
  * @throws {Error} if required configuration is missing or invalid
  */
-function createBezzie(config: BezzieConfig): Bezzie {
+function createBezzie<TUser extends Record<string, unknown> = Record<string, unknown>>(
+  config: BezzieConfig<TUser>
+): Bezzie<TUser> {
   const required = ['issuer', 'clientId', 'clientSecret', 'adapter', 'baseUrl']
   for (const key of required) {
-    if (!config[key as keyof BezzieConfig]) {
+    if (!config[key as keyof BezzieConfig<TUser>]) {
       throw new Error(`Bezzie: missing required config: ${key}`)
     }
   }

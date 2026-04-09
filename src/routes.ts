@@ -5,7 +5,10 @@ import { getAuthorizationServer, type DiscoveryCache } from './discovery'
 import type { Session, PKCEState } from './session'
 import type { BezzieConfig } from './index'
 
-export function authRoutes(config: BezzieConfig, cache: DiscoveryCache) {
+export function authRoutes<TUser extends Record<string, unknown> = Record<string, unknown>>(
+  config: BezzieConfig<TUser>,
+  cache: DiscoveryCache
+) {
   const router = new Hono()
   const sessionStore = config.adapter
 
@@ -102,7 +105,7 @@ export function authRoutes(config: BezzieConfig, cache: DiscoveryCache) {
     const sessionId = Array.from(crypto.getRandomValues(new Uint8Array(16)))
       .map((b) => b.toString(16).padStart(2, '0'))
       .join('')
-    const session: Session = {
+    const session: Session<TUser> = {
       _type: 'session',
       accessToken: access_token,
       refreshToken: refresh_token,
@@ -113,7 +116,7 @@ export function authRoutes(config: BezzieConfig, cache: DiscoveryCache) {
         ...claims,
         sub: claims.sub,
         email: claims.email as string | undefined,
-      },
+      } as unknown as { sub: string; email?: string } & TUser,
     }
 
     // TTL for session in KV. Set to 30 days as per bug fix 3.
@@ -140,7 +143,7 @@ export function authRoutes(config: BezzieConfig, cache: DiscoveryCache) {
     if (sessionId) {
       const session = await sessionStore.get(sessionId)
       if (session && session._type === 'session') {
-        idToken = (session as Session).idToken
+        idToken = (session as Session<TUser>).idToken
       }
       await sessionStore.delete(sessionId)
     }

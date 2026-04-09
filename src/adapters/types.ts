@@ -21,14 +21,14 @@ export interface PKCEState {
 /**
  * Interface for session storage adapters.
  */
-export interface SessionAdapter {
+export interface SessionAdapter<TUser extends Record<string, unknown> = Record<string, unknown>> {
   /**
    * Retrieves a session or PKCE state by ID.
    *
    * @param sessionId Session ID
    * @returns Session, PKCE state, or null if not found
    */
-  get(sessionId: string): Promise<Session | PKCEState | null>
+  get(sessionId: string): Promise<Session<TUser> | PKCEState | null>
 
   /**
    * Stores a session or PKCE state.
@@ -37,7 +37,7 @@ export interface SessionAdapter {
    * @param session Session or PKCE state
    * @param ttlSeconds Time-to-live in seconds
    */
-  set(sessionId: string, session: Session | PKCEState, ttlSeconds: number): Promise<void>
+  set(sessionId: string, session: Session<TUser> | PKCEState, ttlSeconds: number): Promise<void>
 
   /**
    * Deletes a session or PKCE state.
