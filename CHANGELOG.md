@@ -9,6 +9,7 @@
 - Session ID now uses 128-bit entropy (was 122-bit from randomUUID)
 
 ### Changed
+- `middleware()` now falls back to the original access token if JWT validation fails (enabling opaque token support)
 - `Session` and `Variables` are now generic, allowing for strongly-typed custom user data via `createBezzie<TUser>()`
 - `Session` and `PKCEState` now include a `_type` discriminant field to simplify type checking and improve reliability of session identification
 - `deleteCookie` now mirrors all cookie flags from the original set call

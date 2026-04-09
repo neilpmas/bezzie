@@ -117,8 +117,9 @@ async function authenticate<TUser extends Record<string, unknown> = Record<strin
 
       await oauth.validateJwtAccessToken(as, mockReq, config.audience, { [oauth.jwksCache]: cache.jwksCache })
     } catch {
-      // 9. If JWT invalid → unauthenticated
-      return { type: 'unauthenticated' }
+      // 9. If JWT invalid → fallback to opaque token (pass through)
+      // This allows Bezzie to work with providers that issue opaque access tokens
+      // or if the JWT is not verifiable for some reason, but we still have a valid session.
     }
   }
 

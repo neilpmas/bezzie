@@ -172,7 +172,7 @@ describe('Middleware', () => {
     expect(await adapter.get(sessionId)).toBeNull()
   })
 
-  it('invalid JWT returns 401', async () => {
+  it('Opaque token fallback - passes through when JWT validation fails', async () => {
     const sessionId = 'test-session-id'
     await adapter.set(
       sessionId,
@@ -196,7 +196,9 @@ describe('Middleware', () => {
       },
     })
 
-    expect(res.status).toBe(401)
+    expect(res.status).toBe(200)
+    const data = (await res.json()) as { accessToken: string }
+    expect(data.accessToken).toBe('invalid-jwt')
   })
 
   it('triggers refresh with 60s buffer', async () => {
@@ -435,6 +437,62 @@ describe('Middleware', () => {
 
     expect(res.status).toBe(302)
     expect(res.headers.get('Location')).toBe('/custom/login')
+  })
+
+  it('Two instances, isolated caches - verify discovery is called for each', async () => {
+    const issuer1 = 'https://auth1.example.com'
+    const issuer2 = 'https://auth2.example.com'
+
+    const adapter1 = new MemoryAdapter()
+    const auth1 = createBezzie({
+      issuer: issuer1,
+      clientId: 'client1',
+      clientSecret: 'secret1',
+      baseUrl: 'https://app1.example.com',
+      adapter: adapter1,
+    })
+
+    const auth2 = createBezzie({
+      issuer: issuer2,
+      clientId: 'client2',
+      clientSecret: 'secret2',
+      baseUrl: 'https://app2.example.com',
+      adapter: adapter1,
+    })
+
+    const app1 = new Hono()
+    app1.use('*', auth1.middleware())
+    app1.get('/', (c) => c.text('ok'))
+
+    const app2 = new Hono()
+    app2.use('*', auth2.middleware())
+    app2.get('/', (c) => c.text('ok'))
+
+    const sessionId = 'test-session-id'
+    await adapter1.set(
+      sessionId,
+      {
+        _type: 'session',
+        accessToken: 'token',
+        expiresAt: Math.floor(Date.now() / 1000) + 3600,
+        createdAt: Math.floor(Date.now() / 1000),
+        user: { sub: 'user1' },
+      },
+      3600
+    )
+
+    vi.mocked(oauth.discoveryRequest).mockResolvedValue({} as Response)
+    vi.mocked(oauth.processDiscoveryResponse).mockImplementation(async (iss) => {
+      return { issuer: iss.toString(), jwks_uri: `${iss.toString()}/jwks` } as oauth.AuthorizationServer
+    })
+    vi.mocked(oauth.validateJwtAccessToken).mockResolvedValue({} as oauth.JWTAccessTokenClaims)
+
+    await app1.request('/', { headers: { Cookie: `__Host-session=${sessionId}` } })
+    await app2.request('/', { headers: { Cookie: `__Host-session=${sessionId}` } })
+
+    expect(oauth.discoveryRequest).toHaveBeenCalledTimes(2)
+    expect(oauth.discoveryRequest).toHaveBeenNthCalledWith(1, new URL(issuer1))
+    expect(oauth.discoveryRequest).toHaveBeenNthCalledWith(2, new URL(issuer2))
   })
 
   describe('optionalMiddleware', () => {
