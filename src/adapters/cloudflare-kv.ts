@@ -1,5 +1,5 @@
 import { Session } from '../session'
-import { SessionAdapter, PKCEState } from './types'
+import { PKCEState, SessionAdapter } from './types'
 
 export class CloudflareKVAdapter<TUser extends Record<string, unknown> = Record<string, unknown>>
   implements SessionAdapter<TUser>
@@ -7,8 +7,7 @@ export class CloudflareKVAdapter<TUser extends Record<string, unknown> = Record<
   constructor(private kv: KVNamespace) {}
 
   async get(sessionId: string): Promise<Session<TUser> | PKCEState | null> {
-    const session = await this.kv.get<Session<TUser> | PKCEState>(sessionId, 'json')
-    return session
+    return await this.kv.get<Session<TUser> | PKCEState>(sessionId, 'json')
   }
 
   async set(

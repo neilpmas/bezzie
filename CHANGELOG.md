@@ -2,6 +2,8 @@
 
 ### Added
 - `optionalMiddleware()` — middleware that sets user context if a session exists but always calls next()
+- `sideEffects: false` in `package.json` for better tree-shaking
+- `engines` field in `package.json` to specify Node.js >= 18 as the minimum runtime
 
 ### Fixed
 - OIDC discovery errors in `src/discovery.ts` are now caught and re-thrown with more descriptive messages

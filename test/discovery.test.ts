@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { getAuthorizationServer, createDiscoveryCache } from '../src/discovery'
 import * as oauth from 'oauth4webapi'
-import type { BezzieConfig } from '../src/index'
-import { MemoryAdapter } from '../src/session'
+import type { BezzieConfig } from '../src'
+import { MemoryAdapter } from '../src'
 
 vi.mock('oauth4webapi', async () => {
   const actual = await vi.importActual('oauth4webapi')
