@@ -147,6 +147,8 @@ export function authRoutes(config: BezzieConfig, cache: DiscoveryCache) {
     deleteCookie(c, config.cookieName ?? '__Host-session', {
       path: '/',
       secure: true,
+      httpOnly: true,
+      sameSite: 'Strict',
     })
 
     const as = await getAuthorizationServer(config, cache)

@@ -306,9 +306,12 @@ describe('OAuth Routes', () => {
       expect(location).toContain(`id_token_hint=${idToken}`)
 
       // Check cookie cleared
-      const setCookie = res.headers.get('Set-Cookie')
-      expect(setCookie).toContain('__Host-session=;')
-      expect(setCookie).toContain('Max-Age=0')
+      const setCookieHeader = res.headers.get('Set-Cookie')
+      expect(setCookieHeader).toContain('__Host-session=;')
+      expect(setCookieHeader).toContain('Max-Age=0')
+      expect(setCookieHeader).toContain('HttpOnly')
+      expect(setCookieHeader).toContain('Secure')
+      expect(setCookieHeader).toContain('SameSite=Strict')
 
       // Check session deleted from adapter
       expect(await adapter.get(sessionId)).toBeNull()
