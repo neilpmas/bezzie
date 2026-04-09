@@ -94,7 +94,9 @@ export function authRoutes(config: BezzieConfig, cache: DiscoveryCache) {
       console.warn('Bezzie: refresh_token is missing from the token response. offline_access may not be enabled or supported by the provider.')
     }
 
-    const sessionId = crypto.randomUUID()
+    const sessionId = Array.from(crypto.getRandomValues(new Uint8Array(16)))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('')
     const session: Session = {
       accessToken: access_token,
       refreshToken: refresh_token,
