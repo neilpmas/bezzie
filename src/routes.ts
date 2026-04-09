@@ -42,7 +42,12 @@ export function authRoutes(config: BezzieConfig, cache: DiscoveryCache) {
   router.get('/callback', async (c) => {
     const error = c.req.query('error')
     if (error) {
-      return c.text(`OAuth error: ${error}`, 400)
+      const ERROR_MESSAGES: Record<string, string> = {
+        access_denied: 'Access was denied.',
+        temporarily_unavailable: 'The provider is temporarily unavailable. Please try again.',
+        server_error: 'The provider returned a server error.',
+      }
+      return c.text(ERROR_MESSAGES[error] ?? 'Authentication failed.', 400)
     }
     const state = c.req.query('state')
     const code = c.req.query('code')

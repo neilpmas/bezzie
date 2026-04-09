@@ -93,9 +93,21 @@ describe('OAuth Routes', () => {
 
   describe('GET /callback', () => {
     it('returns 400 with error parameter', async () => {
-      const res = await app.request('/callback?error=access_denied')
-      expect(res.status).toBe(400)
-      expect(await res.text()).toBe('OAuth error: access_denied')
+      const res1 = await app.request('/callback?error=access_denied')
+      expect(res1.status).toBe(400)
+      expect(await res1.text()).toBe('Access was denied.')
+
+      const res2 = await app.request('/callback?error=server_error')
+      expect(res2.status).toBe(400)
+      expect(await res2.text()).toBe('The provider returned a server error.')
+
+      const res3 = await app.request('/callback?error=temporarily_unavailable')
+      expect(res3.status).toBe(400)
+      expect(await res3.text()).toBe('The provider is temporarily unavailable. Please try again.')
+
+      const res4 = await app.request('/callback?error=unknown')
+      expect(res4.status).toBe(400)
+      expect(await res4.text()).toBe('Authentication failed.')
     })
 
     it('returns 400 with invalid state', async () => {
