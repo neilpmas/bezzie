@@ -1,6 +1,6 @@
 import { Hono, type MiddlewareHandler } from 'hono'
 import { authRoutes } from './routes'
-import { middleware, type Variables } from './middleware'
+import { middleware, optionalMiddleware, type Variables } from './middleware'
 import { createDiscoveryCache, type DiscoveryCache } from './discovery'
 
 import { CloudflareKVAdapter, type SessionAdapter } from './session'
@@ -153,6 +153,11 @@ export interface Bezzie {
   middleware: () => MiddlewareHandler<{ Variables: Variables }>
 
   /**
+   * Returns a Hono middleware that sets user context if a session exists but always calls next().
+   */
+  optionalMiddleware: () => MiddlewareHandler<{ Variables: Variables }>
+
+  /**
    * Internal discovery cache.
    * @internal
    */
@@ -190,11 +195,12 @@ function createBezzie(config: BezzieConfig): Bezzie {
   return {
     routes: () => router,
     middleware: () => middleware(config, cache),
+    optionalMiddleware: () => optionalMiddleware(config, cache),
     cache,
   }
 }
 
-export { createBezzie, cloudflareKV }
+export { createBezzie, cloudflareKV, middleware, optionalMiddleware }
 export type { Variables } from './middleware'
 export type { SessionAdapter, PKCEState, Session } from './session'
 export { CloudflareKVAdapter, RedisAdapter, MemoryAdapter } from './session'

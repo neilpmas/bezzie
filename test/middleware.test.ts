@@ -436,4 +436,123 @@ describe('Middleware', () => {
     expect(res.status).toBe(302)
     expect(res.headers.get('Location')).toBe('/custom/login')
   })
+
+  describe('optionalMiddleware', () => {
+    it('passes through with no cookie and no context set', async () => {
+      app = new Hono<{ Variables: Variables }>()
+      app.use('/api/*', auth.optionalMiddleware())
+      app.get('/api/me', (c) =>
+        c.json({
+          user: c.get('user') ?? null,
+          accessToken: c.get('accessToken') ?? null,
+        })
+      )
+
+      const res = await app.request('/api/me')
+      expect(res.status).toBe(200)
+      const data = (await res.json()) as { user?: Record<string, unknown>; accessToken?: string }
+      expect(data.user).toBeNull()
+      expect(data.accessToken).toBeNull()
+    })
+
+    it('sets context for valid session', async () => {
+      app = new Hono<{ Variables: Variables }>()
+      app.use('/api/*', auth.optionalMiddleware())
+      app.get('/api/me', (c) =>
+        c.json({
+          user: c.get('user') ?? null,
+          accessToken: c.get('accessToken') ?? null,
+        })
+      )
+
+      const sessionId = 'test-session-id'
+      const user = { sub: 'user-123' }
+      await adapter.set(
+        sessionId,
+        {
+          _type: 'session',
+          accessToken: 'valid-token',
+          refreshToken: 'valid-refresh',
+          expiresAt: Math.floor(Date.now() / 1000) + 3600,
+          createdAt: Math.floor(Date.now() / 1000),
+          user,
+        },
+        3600
+      )
+
+      vi.mocked(oauth.validateJwtAccessToken).mockResolvedValue({} as oauth.JWTAccessTokenClaims)
+
+      const res = await app.request('/api/me', {
+        headers: {
+          Cookie: `__Host-session=${sessionId}`,
+        },
+      })
+
+      expect(res.status).toBe(200)
+      const data = (await res.json()) as { user?: Record<string, unknown>; accessToken?: string }
+      expect(data.user).toEqual(user)
+      expect(data.accessToken).toBe('valid-token')
+    })
+
+    it('passes through but sets no context if session is invalid', async () => {
+      app = new Hono<{ Variables: Variables }>()
+      app.use('/api/*', auth.optionalMiddleware())
+      app.get('/api/me', (c) =>
+        c.json({
+          user: c.get('user') ?? null,
+          accessToken: c.get('accessToken') ?? null,
+        })
+      )
+
+      const res = await app.request('/api/me', {
+        headers: {
+          Cookie: '__Host-session=non-existent',
+        },
+      })
+      expect(res.status).toBe(200)
+      const data = (await res.json()) as { user?: Record<string, unknown>; accessToken?: string }
+      expect(data.user).toBeNull()
+      expect(data.accessToken).toBeNull()
+    })
+
+    it('passes through but sets no context if session is expired and refresh fails', async () => {
+      app = new Hono<{ Variables: Variables }>()
+      app.use('/api/*', auth.optionalMiddleware())
+      app.get('/api/me', (c) =>
+        c.json({
+          user: c.get('user') ?? null,
+          accessToken: c.get('accessToken') ?? null,
+        })
+      )
+
+      const sessionId = 'test-session-id'
+      await adapter.set(
+        sessionId,
+        {
+          _type: 'session',
+          accessToken: 'expired-token',
+          refreshToken: 'invalid-refresh',
+          expiresAt: Math.floor(Date.now() / 1000) - 10,
+          createdAt: Math.floor(Date.now() / 1000) - 1000,
+          user: { sub: '123' },
+        },
+        3600
+      )
+
+      vi.mocked(oauth.refreshTokenGrantRequest).mockResolvedValue({} as Response)
+      vi.mocked(oauth.processRefreshTokenResponse).mockRejectedValue(new Error('failed'))
+
+      const res = await app.request('/api/me', {
+        headers: {
+          Cookie: `__Host-session=${sessionId}`,
+        },
+      })
+
+      expect(res.status).toBe(200)
+      const data = (await res.json()) as { user?: Record<string, unknown>; accessToken?: string }
+      expect(data.user).toBeNull()
+      expect(data.accessToken).toBeNull()
+      expect(await adapter.get(sessionId)).toBeNull()
+    })
+  })
 })
