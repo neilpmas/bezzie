@@ -1,15 +1,17 @@
 import { Session } from '../session'
 import { SessionAdapter, PKCEState } from './types'
 
-interface MemorySession {
-  session: Session | PKCEState
+interface MemorySession<TUser extends Record<string, unknown> = Record<string, unknown>> {
+  session: Session<TUser> | PKCEState
   expiresAt: number
 }
 
-export class MemoryAdapter implements SessionAdapter {
-  private store = new Map<string, MemorySession>()
+export class MemoryAdapter<TUser extends Record<string, unknown> = Record<string, unknown>>
+  implements SessionAdapter<TUser>
+{
+  private store = new Map<string, MemorySession<TUser>>()
 
-  async get(sessionId: string): Promise<Session | PKCEState | null> {
+  async get(sessionId: string): Promise<Session<TUser> | PKCEState | null> {
     const entry = this.store.get(sessionId)
     if (!entry) return null
     if (Date.now() > entry.expiresAt) {
@@ -19,7 +21,11 @@ export class MemoryAdapter implements SessionAdapter {
     return entry.session
   }
 
-  async set(sessionId: string, session: Session | PKCEState, ttlSeconds: number): Promise<void> {
+  async set(
+    sessionId: string,
+    session: Session<TUser> | PKCEState,
+    ttlSeconds: number
+  ): Promise<void> {
     this.store.set(sessionId, {
       session,
       expiresAt: Date.now() + ttlSeconds * 1000,

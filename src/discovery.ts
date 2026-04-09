@@ -19,12 +19,19 @@ export async function getAuthorizationServer(
     return cache.cachedAS
   }
   const issuer = new URL(config.issuer)
-  const response = await oauth.discoveryRequest(issuer)
-  const as = await oauth.processDiscoveryResponse(issuer, response)
-  const cachedAS = config.providerHints?.tokenEndpoint
-    ? { ...as, token_endpoint: config.providerHints.tokenEndpoint }
-    : as
-  cache.cachedAS = cachedAS
-  cache.cacheExpiresAt = Date.now() + 60 * 60 * 1000
-  return cachedAS
+  try {
+    const response = await oauth.discoveryRequest(issuer)
+    const as = await oauth.processDiscoveryResponse(issuer, response)
+    const cachedAS = config.providerHints?.tokenEndpoint
+      ? { ...as, token_endpoint: config.providerHints.tokenEndpoint }
+      : as
+    cache.cachedAS = cachedAS
+    cache.cacheExpiresAt = Date.now() + 60 * 60 * 1000
+    return cachedAS
+  } catch (err) {
+    throw new Error(
+      `Bezzie: OIDC discovery failed for ${config.issuer}: ${err instanceof Error ? err.message : String(err)}`,
+      { cause: err }
+    )
+  }
 }

@@ -2,6 +2,10 @@
   "name": "bezzie",
   "version": "0.1.5",
   "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18"
+  },
   "description": "BFF OAuth 2.0 auth library for Cloudflare Workers",
   "keywords": ["hono", "cloudflare-workers", "oauth", "oidc", "auth", "bff", "session", "jwt", "pkce"],
   "main": "dist/index.js",

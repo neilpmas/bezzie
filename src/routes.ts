@@ -5,7 +5,10 @@ import { getAuthorizationServer, type DiscoveryCache } from './discovery'
 import type { Session, PKCEState } from './session'
 import type { BezzieConfig } from './index'
 
-export function authRoutes(config: BezzieConfig, cache: DiscoveryCache) {
+export function authRoutes<TUser extends Record<string, unknown> = Record<string, unknown>>(
+  config: BezzieConfig<TUser>,
+  cache: DiscoveryCache
+) {
   const router = new Hono()
   const sessionStore = config.adapter
 
@@ -17,7 +20,7 @@ export function authRoutes(config: BezzieConfig, cache: DiscoveryCache) {
     const returnTo = c.req.query('returnTo')
 
     // Store state and codeVerifier in adapter
-    await config.adapter.set(`pkce:${state}`, { codeVerifier: code_verifier, returnTo } as PKCEState, config.pkceStateTtlSeconds ?? 600) // 10 minutes
+    await config.adapter.set(`pkce:${state}`, { _type: 'pkce', codeVerifier: code_verifier, returnTo } as PKCEState, config.pkceStateTtlSeconds ?? 600) // 10 minutes
 
     const as = await getAuthorizationServer(config, cache)
     if (!as.authorization_endpoint) {
@@ -42,7 +45,12 @@ export function authRoutes(config: BezzieConfig, cache: DiscoveryCache) {
   router.get('/callback', async (c) => {
     const error = c.req.query('error')
     if (error) {
-      return c.text(`OAuth error: ${error}`, 400)
+      const ERROR_MESSAGES: Record<string, string> = {
+        access_denied: 'Access was denied.',
+        temporarily_unavailable: 'The provider is temporarily unavailable. Please try again.',
+        server_error: 'The provider returned a server error.',
+      }
+      return c.text(ERROR_MESSAGES[error] ?? 'Authentication failed.', 400)
     }
     const state = c.req.query('state')
     const code = c.req.query('code')
@@ -94,8 +102,11 @@ export function authRoutes(config: BezzieConfig, cache: DiscoveryCache) {
       console.warn('Bezzie: refresh_token is missing from the token response. offline_access may not be enabled or supported by the provider.')
     }
 
-    const sessionId = crypto.randomUUID()
-    const session: Session = {
+    const sessionId = Array.from(crypto.getRandomValues(new Uint8Array(16)))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('')
+    const session: Session<TUser> = {
+      _type: 'session',
       accessToken: access_token,
       refreshToken: refresh_token,
       idToken: id_token,
@@ -105,7 +116,7 @@ export function authRoutes(config: BezzieConfig, cache: DiscoveryCache) {
         ...claims,
         sub: claims.sub,
         email: claims.email as string | undefined,
-      },
+      } as unknown as { sub: string; email?: string } & TUser,
     }
 
     // TTL for session in KV. Set to 30 days as per bug fix 3.
@@ -131,8 +142,8 @@ export function authRoutes(config: BezzieConfig, cache: DiscoveryCache) {
     let idToken: string | undefined
     if (sessionId) {
       const session = await sessionStore.get(sessionId)
-      if (session && !('codeVerifier' in session)) {
-        idToken = (session as Session).idToken
+      if (session && session._type === 'session') {
+        idToken = (session as Session<TUser>).idToken
       }
       await sessionStore.delete(sessionId)
     }
@@ -140,6 +151,8 @@ export function authRoutes(config: BezzieConfig, cache: DiscoveryCache) {
     deleteCookie(c, config.cookieName ?? '__Host-session', {
       path: '/',
       secure: true,
+      httpOnly: true,
+      sameSite: 'Strict',
     })
 
     const as = await getAuthorizationServer(config, cache)

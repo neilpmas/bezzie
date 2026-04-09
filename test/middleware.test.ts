@@ -69,6 +69,7 @@ describe('Middleware', () => {
     await adapter.set(
       sessionId,
       {
+        _type: 'session',
         accessToken: 'valid-token',
         refreshToken: 'valid-refresh',
         expiresAt: Math.floor(Date.now() / 1000) + 3600,
@@ -99,6 +100,7 @@ describe('Middleware', () => {
     await adapter.set(
       sessionId,
       {
+        _type: 'session',
         accessToken: 'expired-token',
         refreshToken: 'valid-refresh',
         expiresAt: Math.floor(Date.now() / 1000) - 10, // expired 10s ago
@@ -140,6 +142,7 @@ describe('Middleware', () => {
     await adapter.set(
       sessionId,
       {
+        _type: 'session',
         accessToken: 'expired-token',
         refreshToken: 'invalid-refresh',
         expiresAt: Math.floor(Date.now() / 1000) - 10,
@@ -169,11 +172,12 @@ describe('Middleware', () => {
     expect(await adapter.get(sessionId)).toBeNull()
   })
 
-  it('invalid JWT returns 401', async () => {
+  it('Opaque token fallback - passes through when JWT validation fails', async () => {
     const sessionId = 'test-session-id'
     await adapter.set(
       sessionId,
       {
+        _type: 'session',
         accessToken: 'invalid-jwt',
         refreshToken: 'refresh',
         expiresAt: Math.floor(Date.now() / 1000) + 3600,
@@ -192,7 +196,9 @@ describe('Middleware', () => {
       },
     })
 
-    expect(res.status).toBe(401)
+    expect(res.status).toBe(200)
+    const data = (await res.json()) as { accessToken: string }
+    expect(data.accessToken).toBe('invalid-jwt')
   })
 
   it('triggers refresh with 60s buffer', async () => {
@@ -200,6 +206,7 @@ describe('Middleware', () => {
     await adapter.set(
       sessionId,
       {
+        _type: 'session',
         accessToken: 'near-expiry-token',
         refreshToken: 'valid-refresh',
         expiresAt: Math.floor(Date.now() / 1000) + 30, // expires in 30s
@@ -245,6 +252,7 @@ describe('Middleware', () => {
 
     const sessionId = 'test-session-id'
     await adapter.set(sessionId, {
+      _type: 'session',
       accessToken: 'valid-token',
       refreshToken: 'valid-refresh',
       expiresAt: Math.floor(Date.now() / 1000) + 3600,
@@ -280,6 +288,7 @@ describe('Middleware', () => {
 
     const sessionId = 'test-session-id'
     await adapter.set(sessionId, {
+      _type: 'session',
       accessToken: 'opaque-token',
       refreshToken: 'valid-refresh',
       expiresAt: Math.floor(Date.now() / 1000) + 3600,
@@ -307,6 +316,7 @@ describe('Middleware', () => {
     await adapter.set(
       sessionId,
       {
+        _type: 'session',
         accessToken: oldAccessToken,
         refreshToken: 'valid-refresh',
         expiresAt: Math.floor(Date.now() / 1000) + 30, // expires in 30s
@@ -335,6 +345,7 @@ describe('Middleware', () => {
         await adapter.set(
           id,
           {
+            _type: 'session',
             accessToken: newAccessToken,
             refreshToken: 'new-refresh',
             expiresAt: Math.floor(Date.now() / 1000) + 3600,
@@ -367,6 +378,7 @@ describe('Middleware', () => {
     await adapter.set(
       sessionId,
       {
+        _type: 'session',
         accessToken: 'token',
         refreshToken: 'refresh',
         expiresAt: Math.floor(Date.now() / 1000) + 3600,
@@ -407,6 +419,7 @@ describe('Middleware', () => {
     await adapter.set(
       sessionId,
       {
+        _type: 'session',
         accessToken: 'token',
         refreshToken: 'refresh',
         expiresAt: Math.floor(Date.now() / 1000) + 3600,
@@ -424,5 +437,180 @@ describe('Middleware', () => {
 
     expect(res.status).toBe(302)
     expect(res.headers.get('Location')).toBe('/custom/login')
+  })
+
+  it('Two instances, isolated caches - verify discovery is called for each', async () => {
+    const issuer1 = 'https://auth1.example.com'
+    const issuer2 = 'https://auth2.example.com'
+
+    const adapter1 = new MemoryAdapter()
+    const auth1 = createBezzie({
+      issuer: issuer1,
+      clientId: 'client1',
+      clientSecret: 'secret1',
+      baseUrl: 'https://app1.example.com',
+      adapter: adapter1,
+    })
+
+    const auth2 = createBezzie({
+      issuer: issuer2,
+      clientId: 'client2',
+      clientSecret: 'secret2',
+      baseUrl: 'https://app2.example.com',
+      adapter: adapter1,
+    })
+
+    const app1 = new Hono()
+    app1.use('*', auth1.middleware())
+    app1.get('/', (c) => c.text('ok'))
+
+    const app2 = new Hono()
+    app2.use('*', auth2.middleware())
+    app2.get('/', (c) => c.text('ok'))
+
+    const sessionId = 'test-session-id'
+    await adapter1.set(
+      sessionId,
+      {
+        _type: 'session',
+        accessToken: 'token',
+        expiresAt: Math.floor(Date.now() / 1000) + 3600,
+        createdAt: Math.floor(Date.now() / 1000),
+        user: { sub: 'user1' },
+      },
+      3600
+    )
+
+    vi.mocked(oauth.discoveryRequest).mockResolvedValue({} as Response)
+    vi.mocked(oauth.processDiscoveryResponse).mockImplementation(async (iss) => {
+      return { issuer: iss.toString(), jwks_uri: `${iss.toString()}/jwks` } as oauth.AuthorizationServer
+    })
+    vi.mocked(oauth.validateJwtAccessToken).mockResolvedValue({} as oauth.JWTAccessTokenClaims)
+
+    await app1.request('/', { headers: { Cookie: `__Host-session=${sessionId}` } })
+    await app2.request('/', { headers: { Cookie: `__Host-session=${sessionId}` } })
+
+    expect(oauth.discoveryRequest).toHaveBeenCalledTimes(2)
+    expect(oauth.discoveryRequest).toHaveBeenNthCalledWith(1, new URL(issuer1))
+    expect(oauth.discoveryRequest).toHaveBeenNthCalledWith(2, new URL(issuer2))
+  })
+
+  describe('optionalMiddleware', () => {
+    it('passes through with no cookie and no context set', async () => {
+      app = new Hono<{ Variables: Variables }>()
+      app.use('/api/*', auth.optionalMiddleware())
+      app.get('/api/me', (c) =>
+        c.json({
+          user: c.get('user') ?? null,
+          accessToken: c.get('accessToken') ?? null,
+        })
+      )
+
+      const res = await app.request('/api/me')
+      expect(res.status).toBe(200)
+      const data = (await res.json()) as { user?: Record<string, unknown>; accessToken?: string }
+      expect(data.user).toBeNull()
+      expect(data.accessToken).toBeNull()
+    })
+
+    it('sets context for valid session', async () => {
+      app = new Hono<{ Variables: Variables }>()
+      app.use('/api/*', auth.optionalMiddleware())
+      app.get('/api/me', (c) =>
+        c.json({
+          user: c.get('user') ?? null,
+          accessToken: c.get('accessToken') ?? null,
+        })
+      )
+
+      const sessionId = 'test-session-id'
+      const user = { sub: 'user-123' }
+      await adapter.set(
+        sessionId,
+        {
+          _type: 'session',
+          accessToken: 'valid-token',
+          refreshToken: 'valid-refresh',
+          expiresAt: Math.floor(Date.now() / 1000) + 3600,
+          createdAt: Math.floor(Date.now() / 1000),
+          user,
+        },
+        3600
+      )
+
+      vi.mocked(oauth.validateJwtAccessToken).mockResolvedValue({} as oauth.JWTAccessTokenClaims)
+
+      const res = await app.request('/api/me', {
+        headers: {
+          Cookie: `__Host-session=${sessionId}`,
+        },
+      })
+
+      expect(res.status).toBe(200)
+      const data = (await res.json()) as { user?: Record<string, unknown>; accessToken?: string }
+      expect(data.user).toEqual(user)
+      expect(data.accessToken).toBe('valid-token')
+    })
+
+    it('passes through but sets no context if session is invalid', async () => {
+      app = new Hono<{ Variables: Variables }>()
+      app.use('/api/*', auth.optionalMiddleware())
+      app.get('/api/me', (c) =>
+        c.json({
+          user: c.get('user') ?? null,
+          accessToken: c.get('accessToken') ?? null,
+        })
+      )
+
+      const res = await app.request('/api/me', {
+        headers: {
+          Cookie: '__Host-session=non-existent',
+        },
+      })
+      expect(res.status).toBe(200)
+      const data = (await res.json()) as { user?: Record<string, unknown>; accessToken?: string }
+      expect(data.user).toBeNull()
+      expect(data.accessToken).toBeNull()
+    })
+
+    it('passes through but sets no context if session is expired and refresh fails', async () => {
+      app = new Hono<{ Variables: Variables }>()
+      app.use('/api/*', auth.optionalMiddleware())
+      app.get('/api/me', (c) =>
+        c.json({
+          user: c.get('user') ?? null,
+          accessToken: c.get('accessToken') ?? null,
+        })
+      )
+
+      const sessionId = 'test-session-id'
+      await adapter.set(
+        sessionId,
+        {
+          _type: 'session',
+          accessToken: 'expired-token',
+          refreshToken: 'invalid-refresh',
+          expiresAt: Math.floor(Date.now() / 1000) - 10,
+          createdAt: Math.floor(Date.now() / 1000) - 1000,
+          user: { sub: '123' },
+        },
+        3600
+      )
+
+      vi.mocked(oauth.refreshTokenGrantRequest).mockResolvedValue({} as Response)
+      vi.mocked(oauth.processRefreshTokenResponse).mockRejectedValue(new Error('failed'))
+
+      const res = await app.request('/api/me', {
+        headers: {
+          Cookie: `__Host-session=${sessionId}`,
+        },
+      })
+
+      expect(res.status).toBe(200)
+      const data = (await res.json()) as { user?: Record<string, unknown>; accessToken?: string }
+      expect(data.user).toBeNull()
+      expect(data.accessToken).toBeNull()
+      expect(await adapter.get(sessionId)).toBeNull()
+    })
   })
 })

@@ -93,9 +93,21 @@ describe('OAuth Routes', () => {
 
   describe('GET /callback', () => {
     it('returns 400 with error parameter', async () => {
-      const res = await app.request('/callback?error=access_denied')
-      expect(res.status).toBe(400)
-      expect(await res.text()).toBe('OAuth error: access_denied')
+      const res1 = await app.request('/callback?error=access_denied')
+      expect(res1.status).toBe(400)
+      expect(await res1.text()).toBe('Access was denied.')
+
+      const res2 = await app.request('/callback?error=server_error')
+      expect(res2.status).toBe(400)
+      expect(await res2.text()).toBe('The provider returned a server error.')
+
+      const res3 = await app.request('/callback?error=temporarily_unavailable')
+      expect(res3.status).toBe(400)
+      expect(await res3.text()).toBe('The provider is temporarily unavailable. Please try again.')
+
+      const res4 = await app.request('/callback?error=unknown')
+      expect(res4.status).toBe(400)
+      expect(await res4.text()).toBe('Authentication failed.')
     })
 
     it('returns 400 with invalid state', async () => {
@@ -109,7 +121,7 @@ describe('OAuth Routes', () => {
       const code = 'test-code'
       const codeVerifier = 'test-verifier'
       
-      await adapter.set(`pkce:${state}`, { codeVerifier } as PKCEState, 600)
+      await adapter.set(`pkce:${state}`, { _type: 'pkce', codeVerifier } as PKCEState, 600)
 
       // Setup mocks
       const mockAs = { issuer: config.issuer }
@@ -159,7 +171,7 @@ describe('OAuth Routes', () => {
       const codeVerifier = 'test-verifier'
       const returnTo = '/dashboard'
       
-      await adapter.set(`pkce:${state}`, { codeVerifier, returnTo } as PKCEState, 600)
+      await adapter.set(`pkce:${state}`, { _type: 'pkce', codeVerifier, returnTo } as PKCEState, 600)
 
       // Setup mocks
       const mockAs = { issuer: config.issuer }
@@ -187,7 +199,7 @@ describe('OAuth Routes', () => {
       const codeVerifier = 'test-verifier'
       const returnTo = 'https://evil.com/malicious'
       
-      await adapter.set(`pkce:${state}`, { codeVerifier, returnTo } as PKCEState, 600)
+      await adapter.set(`pkce:${state}`, { _type: 'pkce', codeVerifier, returnTo } as PKCEState, 600)
 
       const res = await app.request(`/callback?state=${state}&code=${code}`)
 
@@ -201,7 +213,7 @@ describe('OAuth Routes', () => {
       const codeVerifier = 'test-verifier'
       const returnTo = '//evil.com'
       
-      await adapter.set(`pkce:${state}`, { codeVerifier, returnTo } as PKCEState, 600)
+      await adapter.set(`pkce:${state}`, { _type: 'pkce', codeVerifier, returnTo } as PKCEState, 600)
 
       const res = await app.request(`/callback?state=${state}&code=${code}`)
 
@@ -267,6 +279,7 @@ describe('OAuth Routes', () => {
       const sessionId = 'test-session-id'
       const idToken = 'mock-id-token'
       await adapter.set(sessionId, { 
+        _type: 'session',
         accessToken: 'test',
         refreshToken: 'refresh',
         idToken,
@@ -294,9 +307,12 @@ describe('OAuth Routes', () => {
       expect(location).toContain(`id_token_hint=${idToken}`)
 
       // Check cookie cleared
-      const setCookie = res.headers.get('Set-Cookie')
-      expect(setCookie).toContain('__Host-session=;')
-      expect(setCookie).toContain('Max-Age=0')
+      const setCookieHeader = res.headers.get('Set-Cookie')
+      expect(setCookieHeader).toContain('__Host-session=;')
+      expect(setCookieHeader).toContain('Max-Age=0')
+      expect(setCookieHeader).toContain('HttpOnly')
+      expect(setCookieHeader).toContain('Secure')
+      expect(setCookieHeader).toContain('SameSite=Strict')
 
       // Check session deleted from adapter
       expect(await adapter.get(sessionId)).toBeNull()
@@ -309,6 +325,7 @@ describe('OAuth Routes', () => {
       const sessionId = 'test-session-id'
       const idToken = 'mock-id-token'
       await adapter.set(sessionId, { 
+        _type: 'session',
         accessToken: 'test',
         idToken,
         expiresAt: Math.floor(Date.now() / 1000) + 3600,

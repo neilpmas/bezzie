@@ -1,7 +1,11 @@
 /**
  * Represents a user session.
  */
-export interface Session {
+export interface Session<TUser extends Record<string, unknown> = Record<string, unknown>> {
+  /**
+   * Internal type discriminant.
+   */
+  _type: 'session'
   /**
    * OAuth access token.
    */
@@ -34,8 +38,7 @@ export interface Session {
      * User's email address.
      */
     email?: string
-    [key: string]: unknown
-  }
+  } & TUser
 }
 
 export * from './adapters'

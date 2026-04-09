@@ -3,6 +3,7 @@ import { env } from 'cloudflare:test'
 import { CloudflareKVAdapter, RedisAdapter, MemoryAdapter, Session, RedisClient } from '../src/session'
 
 const mockSession: Session = {
+  _type: 'session',
   accessToken: 'access-token',
   refreshToken: 'refresh-token',
   expiresAt: Math.floor(Date.now() / 1000) + 3600,
