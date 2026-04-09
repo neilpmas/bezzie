@@ -30,7 +30,8 @@ export async function getAuthorizationServer(
     return cachedAS
   } catch (err) {
     throw new Error(
-      `Bezzie: OIDC discovery failed for ${config.issuer}: ${err instanceof Error ? err.message : String(err)}`
+      `Bezzie: OIDC discovery failed for ${config.issuer}: ${err instanceof Error ? err.message : String(err)}`,
+      { cause: err }
     )
   }
 }
