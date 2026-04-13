@@ -72,11 +72,18 @@ export function authRoutes<TUser extends Record<string, unknown> = Record<string
     const client: oauth.Client = { client_id: config.clientId }
     const clientAuth = oauth.ClientSecretPost(config.clientSecret)
 
+    const callbackParams = oauth.validateAuthResponse(
+      as,
+      client,
+      new URL(c.req.url).searchParams,
+      oauth.skipStateCheck, // bezzie validates state via KV lookup above
+    )
+
     const response = await oauth.authorizationCodeGrantRequest(
       as,
       client,
       clientAuth,
-      new URL(c.req.url).searchParams,
+      callbackParams,
       `${config.baseUrl}/auth/callback`,
       codeVerifier,
     )
