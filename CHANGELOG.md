@@ -6,6 +6,7 @@
 - `engines` field in `package.json` to specify Node.js >= 18 as the minimum runtime
 
 ### Fixed
+- Callback handler now uses `validateAuthResponse()` before exchanging code (required for `oauth4webapi` v3)
 - OIDC discovery errors in `src/discovery.ts` are now caught and re-thrown with more descriptive messages
 - The `error` query parameter in the callback route is now mapped to fixed error messages instead of being returned directly in the response body
 - Session ID now uses 128-bit entropy (was 122-bit from randomUUID)
