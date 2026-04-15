@@ -56,6 +56,14 @@ Done. Your app now has BCP212-compliant BFF auth.
 
 ---
 
+## Demo
+
+See the full BFF flow in action: [bezzie-demo.neilmason.dev](https://bezzie-demo.neilmason.dev)
+
+Source: [github.com/neilpmas/bezzie-demo](https://github.com/neilpmas/bezzie-demo)
+
+---
+
 ## Why
 
 Most OAuth libraries hand tokens directly to the browser. BCP212 says you shouldn't — it's a significant attack surface. Bezzie keeps tokens server-side in Cloudflare KV and gives the browser a session cookie instead.
