@@ -28,8 +28,9 @@
     "dev": "wrangler dev",
     "build": "tsc",
     "test": "vitest run",
-    "lint": "eslint src test",
+    "lint": "eslint src test scripts",
     "format": "prettier --write src test",
+    "release": "node scripts/release.js",
     "prepublishOnly": "npm run build && npm test && npm run lint"
   },
   "dependencies": {
