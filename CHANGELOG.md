@@ -1,3 +1,15 @@
+# Changelog
+
+## [0.2.0](https://github.com/neilpmas/bezzie/compare/v0.1.7...v0.2.0) (2026-04-18)
+
+
+### Features
+
+* add release script for automated versioning and GitHub release creation ([f076162](https://github.com/neilpmas/bezzie/commit/f076162118ae1d6875ac9d252add98802fd01a8b))
+* add release script for automated versioning and GitHub release creation ([d26be01](https://github.com/neilpmas/bezzie/commit/d26be01f400de9f69e1158c04ed63a6136692ae9))
+* automated releases with release-please ([cc4892e](https://github.com/neilpmas/bezzie/commit/cc4892e4e6b99c11d69f012cd1bd95682ac0154d))
+* automated releases with release-please ([1c46575](https://github.com/neilpmas/bezzie/commit/1c4657570de3cf5ae647be02a9930337a46b79b7))
+
 ## Unreleased
 
 ### Added
