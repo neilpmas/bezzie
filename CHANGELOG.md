@@ -1,11 +1,13 @@
 ## Unreleased
 
 ### Added
+- `npm run release` — automated script for git tagging and GitHub release creation
 - `optionalMiddleware()` — middleware that sets user context if a session exists but always calls next()
 - `sideEffects: false` in `package.json` for better tree-shaking
 - `engines` field in `package.json` to specify Node.js >= 18 as the minimum runtime
 
 ### Fixed
+- Fixed lint errors and improved robustness of the `release.js` script
 - Callback handler now uses `validateAuthResponse()` before exchanging code (required for `oauth4webapi` v3)
 - OIDC discovery errors in `src/discovery.ts` are now caught and re-thrown with more descriptive messages
 - The `error` query parameter in the callback route is now mapped to fixed error messages instead of being returned directly in the response body
