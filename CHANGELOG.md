@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.1](https://github.com/neilpmas/bezzie/compare/v0.2.0...v0.2.1) (2026-04-18)
+
+
+### Bug Fixes
+
+* move publish step into release-please workflow ([6d96a0b](https://github.com/neilpmas/bezzie/commit/6d96a0bc84d0782020490fb8e373ab9ec5a8c1f5))
+* move publish step into release-please workflow ([afb3d2f](https://github.com/neilpmas/bezzie/commit/afb3d2fb9479b0c4ffee6ea87212378bfca044f0))
+
 ## [0.2.0](https://github.com/neilpmas/bezzie/compare/v0.1.7...v0.2.0) (2026-04-18)
 
 
