@@ -139,34 +139,50 @@ app.all('/api/proxy/*', async (c) => {
 
 ## How It Works
 
-### Login Flow
+### System context
 
-```
-Browser → BFF /auth/login → Auth0 (Authorization Code + PKCE)
-                                    │
-                               code returned
-                                    │
-              BFF exchanges code → tokens stored in KV
-              BFF issues HttpOnly session cookie → Browser
+```mermaid
+C4Context
+  title System Context — Bezzie
+
+  Person(user, "User", "Browser application user")
+  System(bezzie, "Cloudflare Worker (bezzie)", "BFF: owns the OAuth flow, issues session cookies to the browser")
+  System_Ext(idp, "Identity Provider", "Auth0 / Okta / Keycloak / Google — issues tokens")
+  System_Ext(upstream, "Upstream API", "Your backend — trusts Bearer tokens forwarded by the Worker")
+
+  Rel(user, bezzie, "HTTPS requests + session cookie")
+  Rel(bezzie, idp, "OIDC discovery, token exchange, token refresh")
+  Rel(bezzie, upstream, "Proxied requests with Authorization: Bearer")
+  Rel(idp, user, "Redirect back after login")
 ```
 
-### Per-Request Flow
+### Containers
+
+```mermaid
+C4Container
+  title Container — bezzie deployment
+
+  Person(user, "User")
+  Container(spa, "React SPA", "Cloudflare Pages", "Public landing page + protected dashboard")
+  Container(worker, "Cloudflare Worker", "Hono + bezzie", "BFF: auth routes + request middleware + token management")
+  ContainerDb(kv, "Cloudflare KV", "KVNamespace", "Stores sessions and PKCE state")
+  System_Ext(idp, "Identity Provider", "Auth0 / Okta / Keycloak")
+  System_Ext(upstream, "Upstream API", "Backend services")
+
+  Rel(user, spa, "HTTPS")
+  Rel(spa, worker, "API calls + __Host-session cookie")
+  Rel(worker, kv, "Session read / write / delete")
+  Rel(worker, idp, "OIDC discovery + token exchange + token refresh + JWKS")
+  Rel(worker, upstream, "Authorization: Bearer {accessToken}")
+```
+
+### Per-request flow
 
 1. Browser sends request to BFF with session cookie
 2. BFF looks up session in KV, retrieves access token
 3. BFF validates JWT (via JWKS, using Web Crypto API)
 4. If expired, BFF uses refresh token to get a new one and updates KV
 5. BFF forwards request upstream with `Authorization: Bearer <token>`
-
-### Session Storage
-
-Sessions are stored in Cloudflare KV:
-
-```
-sessionId → { accessToken, refreshToken, expiresAt, user }
-```
-
-KV TTL is aligned with the refresh token lifetime. When the refresh token expires, the user must log in again.
 
 ---
 
