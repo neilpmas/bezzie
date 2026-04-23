@@ -152,6 +152,18 @@ export interface BezzieConfig<TUser extends Record<string, unknown> = Record<str
   refreshBufferSeconds?: number
 
   /**
+   * Optional function to map and validate raw ID token claims to TUser.
+   * Called in /callback after the ID token is validated.
+   * If provided, its return value is used as session.user instead of the raw claims.
+   * If it throws, the login is aborted, the partial session is deleted, and a 500 is returned.
+   * Use this to validate claims with Zod or any other schema library.
+   *
+   * @example
+   * mapClaims: (claims) => MyUserSchema.parse(claims)
+   */
+  mapClaims?: (claims: unknown) => TUser | Promise<TUser>
+
+  /**
    * Called at the end of /callback after the session is created.
    * Awaited. If it throws, the login is aborted and the partial session is deleted.
    * Use c.executionCtx?.waitUntil() for non-critical background work.

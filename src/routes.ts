@@ -161,6 +161,39 @@ export function authRoutes<TUser extends Record<string, unknown> = Record<string
     const sessionId = Array.from(crypto.getRandomValues(new Uint8Array(16)))
       .map((b) => b.toString(16).padStart(2, '0'))
       .join('')
+
+    let mappedUser: { sub: string; email?: string } & TUser
+
+    if (config.mapClaims) {
+      try {
+        const mapped = await config.mapClaims(claims)
+        mappedUser = {
+          ...mapped,
+          sub: (claims as { sub: string }).sub,
+          email: (claims as { email?: string }).email,
+        } as { sub: string; email?: string } & TUser
+      } catch (err) {
+        // mapClaims threw — abort login, clean up
+        deleteCookie(c, config.cookieName ?? '__Host-session', {
+          path: '/',
+          secure: true,
+          httpOnly: true,
+          sameSite: 'Strict',
+        })
+        console.error(
+          'Bezzie: mapClaims threw, aborting login:',
+          err instanceof Error ? err.message : String(err)
+        )
+        return c.text('Login failed', 500)
+      }
+    } else {
+      mappedUser = {
+        ...claims,
+        sub: claims.sub,
+        email: claims.email as string | undefined,
+      } as unknown as { sub: string; email?: string } & TUser
+    }
+
     const session: Session<TUser> = {
       _type: 'session',
       accessToken: access_token,
@@ -168,11 +201,7 @@ export function authRoutes<TUser extends Record<string, unknown> = Record<string
       idToken: id_token,
       expiresAt: Math.floor(Date.now() / 1000) + (expires_in || 3600),
       createdAt: Math.floor(Date.now() / 1000),
-      user: {
-        ...claims,
-        sub: claims.sub,
-        email: claims.email as string | undefined,
-      } as unknown as { sub: string; email?: string } & TUser,
+      user: mappedUser,
     }
 
     // Prevent session fixation (S11): if the user already had a session cookie,

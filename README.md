@@ -199,11 +199,16 @@ adapter: cloudflareKVAdapter(env.SESSION_KV)
 ```
 
 ### Redis (Upstash)
-Good for cross-region session consistency.
+Good for cross-region session consistency. Works with [Upstash Redis](https://upstash.com) (recommended for Cloudflare Workers) and any Redis client with `get`/`set`/`del` methods.
+
 ```typescript
-import { RedisAdapter } from 'bezzie'
-// ...
-adapter: new RedisAdapter({ url: env.REDIS_URL, token: env.REDIS_TOKEN })
+import { redisAdapter } from 'bezzie'
+import { Redis } from '@upstash/redis/cloudflare'
+
+adapter: redisAdapter(new Redis({
+  url: env.UPSTASH_REDIS_REST_URL,
+  token: env.UPSTASH_REDIS_REST_TOKEN,
+}))
 ```
 
 ### Memory
