@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.2](https://github.com/neilpmas/bezzie/compare/v0.2.1...v0.2.2) (2026-04-23)
+
+
+### Bug Fixes
+
+* **security:** bind PKCE state to pre-login CSRF cookie (S4) ([b1f3ba3](https://github.com/neilpmas/bezzie/commit/b1f3ba31ff178ef750958ec0c6de8c6b7eae8427))
+* **security:** bind PKCE state to pre-login CSRF cookie (S4) ([80b4aa2](https://github.com/neilpmas/bezzie/commit/80b4aa2defb91ac436ca56c188d2ade34b50f7d4))
+
 ## [0.2.1](https://github.com/neilpmas/bezzie/compare/v0.2.0...v0.2.1) (2026-04-18)
 
 
