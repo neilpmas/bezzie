@@ -15,6 +15,8 @@ export function authRoutes<TUser extends Record<string, unknown> = Record<string
   router.get(config.routes?.login ?? '/login', async (c) => {
     const code_verifier = oauth.generateRandomCodeVerifier()
     const code_challenge = await oauth.calculatePKCECodeChallenge(code_verifier)
+    // oauth.generateRandomState() uses crypto.getRandomValues — cryptographically random,
+    // not sequential or time-based. Safe to use as an anti-CSRF state value.
     const state = oauth.generateRandomState()
     const csrfToken = oauth.generateRandomState()
     // S8: OIDC nonce — bound to this login flow, verified in /callback against
@@ -52,6 +54,11 @@ export function authRoutes<TUser extends Record<string, unknown> = Record<string
     authorizationUrl.searchParams.set('nonce', nonce)
     if (config.audience) {
       authorizationUrl.searchParams.set('audience', config.audience)
+    }
+
+    const requestUrl = new URL(c.req.url)
+    if (requestUrl.protocol === 'http:' && requestUrl.hostname !== 'localhost' && requestUrl.hostname !== '127.0.0.1') {
+      console.warn('Bezzie: running on HTTP in a non-localhost environment. The __Host- cookie prefix requires HTTPS — sessions will not be set correctly.')
     }
 
     return c.redirect(authorizationUrl.toString())
@@ -178,6 +185,11 @@ export function authRoutes<TUser extends Record<string, unknown> = Record<string
     // TTL for session in KV. Set to 30 days as per bug fix 3.
     await sessionStore.set(`session:${sessionId}`, session, config.sessionTtlSeconds ?? 30 * 24 * 60 * 60)
 
+    // SameSite=Strict is correct here: this cookie is set *after* the IdP redirect has
+    // already completed (i.e. in /callback, not before the redirect). By the time this
+    // setCookie runs the browser is back on our origin, so Strict does not block the
+    // cookie from being sent. Using Strict rather than Lax gives the strongest
+    // cross-site request forgery protection for all subsequent requests.
     setCookie(c, config.cookieName ?? '__Host-session', sessionId, {
       httpOnly: true,
       secure: true,
