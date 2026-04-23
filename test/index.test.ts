@@ -14,8 +14,6 @@ describe('createBezzie', () => {
 
     expect(typeof auth.routes).toBe('function')
     expect(typeof auth.middleware).toBe('function')
-    expect(auth.cache).toBeDefined()
-    expect(auth.cache.cachedAS).toBeNull()
   })
 
   it('routes() returns a Hono instance', () => {
@@ -77,7 +75,7 @@ describe('providers', () => {
     const config = providers.auth0('test.auth0.com')
     expect(config).toEqual({
       issuer: 'https://test.auth0.com',
-      providerHints: {
+      providerOverrides: {
         logoutUrl: 'https://test.auth0.com/v2/logout',
       },
     })

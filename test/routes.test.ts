@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { createBezzie, MemoryAdapter, type PKCEState, type Session } from '../src'
+import type { DiscoveryCache } from '../src/discovery'
 import * as oauth from 'oauth4webapi'
 
 // Mock oauth4webapi
@@ -31,22 +32,26 @@ describe('OAuth Routes', () => {
 
   describe('GET /login', () => {
     it('redirects to the provider authorization URL', async () => {
-      auth.cache.cachedAS = null
-      auth.cache.cacheExpiresAt = 0
-      const mockAs = { 
+      ;(auth as unknown as { cache: DiscoveryCache }).cache.cachedAS = null
+      ;(auth as unknown as { cache: DiscoveryCache }).cache.cacheExpiresAt = 0
+      const mockAs = {
         issuer: config.issuer,
-        authorization_endpoint: `${config.issuer}/authorize`
+        authorization_endpoint: `${config.issuer}/authorize`,
       }
       vi.mocked(oauth.discoveryRequest).mockResolvedValue({} as unknown as Response)
-      vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue(mockAs as oauth.AuthorizationServer)
+      vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue(
+        mockAs as oauth.AuthorizationServer
+      )
 
       const res = await app.request('/login')
       expect(res.status).toBe(302)
-      const location = res.headers.get('Location')
+      const location = (res.headers as Headers).get('Location')
       expect(location).toContain(`${config.issuer}/authorize`)
       expect(location).toContain(`client_id=${config.clientId}`)
       expect(location).toContain('response_type=code')
-      expect(location).toContain(`redirect_uri=${encodeURIComponent(config.baseUrl + '/auth/callback')}`)
+      expect(location).toContain(
+        `redirect_uri=${encodeURIComponent(config.baseUrl + '/auth/callback')}`
+      )
       expect(location).toContain('scope=openid+profile+email+offline_access')
       expect(location).toContain('code_challenge=')
       expect(location).toContain('code_challenge_method=S256')
@@ -54,39 +59,43 @@ describe('OAuth Routes', () => {
     })
 
     it('stores PKCE state in adapter', async () => {
-      auth.cache.cachedAS = null
-      auth.cache.cacheExpiresAt = 0
-      const mockAs = { 
+      ;(auth as unknown as { cache: DiscoveryCache }).cache.cachedAS = null
+      ;(auth as unknown as { cache: DiscoveryCache }).cache.cacheExpiresAt = 0
+      const mockAs = {
         issuer: config.issuer,
-        authorization_endpoint: `${config.issuer}/authorize`
+        authorization_endpoint: `${config.issuer}/authorize`,
       }
       vi.mocked(oauth.discoveryRequest).mockResolvedValue({} as unknown as Response)
-      vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue(mockAs as oauth.AuthorizationServer)
+      vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue(
+        mockAs as oauth.AuthorizationServer
+      )
 
       const res = await app.request('/login')
       const location = new URL(res.headers.get('Location')!)
       const state = location.searchParams.get('state')
 
-      const stored = await adapter.get(`pkce:${state}`) as PKCEState
+      const stored = (await adapter.get(`pkce:${state}`)) as PKCEState
       expect(stored).toBeDefined()
       expect(typeof stored.codeVerifier).toBe('string')
     })
 
     it('stores returnTo in PKCE state if provided', async () => {
-      auth.cache.cachedAS = null
-      auth.cache.cacheExpiresAt = 0
-      const mockAs = { 
+      ;(auth as unknown as { cache: DiscoveryCache }).cache.cachedAS = null
+      ;(auth as unknown as { cache: DiscoveryCache }).cache.cacheExpiresAt = 0
+      const mockAs = {
         issuer: config.issuer,
-        authorization_endpoint: `${config.issuer}/authorize`
+        authorization_endpoint: `${config.issuer}/authorize`,
       }
       vi.mocked(oauth.discoveryRequest).mockResolvedValue({} as unknown as Response)
-      vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue(mockAs as oauth.AuthorizationServer)
+      vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue(
+        mockAs as oauth.AuthorizationServer
+      )
 
       const res = await app.request('/login?returnTo=/dashboard')
       const location = new URL(res.headers.get('Location')!)
       const state = location.searchParams.get('state')
 
-      const stored = await adapter.get(`pkce:${state}`) as PKCEState
+      const stored = (await adapter.get(`pkce:${state}`)) as PKCEState
       expect(stored.returnTo).toBe('/dashboard')
     })
   })
@@ -122,12 +131,18 @@ describe('OAuth Routes', () => {
       const codeVerifier = 'test-verifier-must-be-at-least-43-chars-long-aaa'
       const csrfToken = 'test-csrf-token'
 
-      await adapter.set(`pkce:${state}`, { _type: 'pkce', codeVerifier, csrfToken } as PKCEState, 600)
+      await adapter.set(
+        `pkce:${state}`,
+        { _type: 'pkce', codeVerifier, csrfToken } as PKCEState,
+        600
+      )
 
       // Setup mocks
       const mockAs = { issuer: config.issuer }
       vi.mocked(oauth.discoveryRequest).mockResolvedValue({} as unknown as Response)
-      vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue(mockAs as oauth.AuthorizationServer)
+      vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue(
+        mockAs as oauth.AuthorizationServer
+      )
       vi.mocked(oauth.authorizationCodeGrantRequest).mockResolvedValue({} as unknown as Response)
       vi.mocked(oauth.processAuthorizationCodeResponse).mockResolvedValue({
         access_token: 'mock-access-token',
@@ -157,7 +172,7 @@ describe('OAuth Routes', () => {
 
       // Check session in adapter
       const sessionId = cookie!.match(/__Host-session=([^;]+)/)![1]
-      const session = await adapter.get(`session:${sessionId}`) as Session
+      const session = (await adapter.get(`session:${sessionId}`)) as Session
       expect(session).toBeDefined()
       expect(session!.accessToken).toBe('mock-access-token')
       expect(session!.idToken).toBe('mock-id-token')
@@ -175,12 +190,18 @@ describe('OAuth Routes', () => {
       const returnTo = '/dashboard'
       const csrfToken = 'test-csrf-token-ret'
 
-      await adapter.set(`pkce:${state}`, { _type: 'pkce', codeVerifier, returnTo, csrfToken } as PKCEState, 600)
+      await adapter.set(
+        `pkce:${state}`,
+        { _type: 'pkce', codeVerifier, returnTo, csrfToken } as PKCEState,
+        600
+      )
 
       // Setup mocks
       const mockAs = { issuer: config.issuer }
       vi.mocked(oauth.discoveryRequest).mockResolvedValue({} as unknown as Response)
-      vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue(mockAs as oauth.AuthorizationServer)
+      vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue(
+        mockAs as oauth.AuthorizationServer
+      )
       vi.mocked(oauth.authorizationCodeGrantRequest).mockResolvedValue({} as unknown as Response)
       vi.mocked(oauth.processAuthorizationCodeResponse).mockResolvedValue({
         access_token: 'mock-access-token',
@@ -206,7 +227,11 @@ describe('OAuth Routes', () => {
       const returnTo = 'https://evil.com/malicious'
       const csrfToken = 'test-csrf-token-evil'
 
-      await adapter.set(`pkce:${state}`, { _type: 'pkce', codeVerifier, returnTo, csrfToken } as PKCEState, 600)
+      await adapter.set(
+        `pkce:${state}`,
+        { _type: 'pkce', codeVerifier, returnTo, csrfToken } as PKCEState,
+        600
+      )
 
       const res = await app.request(`/callback?state=${state}&code=${code}`, {
         headers: { Cookie: `__Host-pkce-csrf=${csrfToken}` },
@@ -223,7 +248,11 @@ describe('OAuth Routes', () => {
       const returnTo = '//evil.com'
       const csrfToken = 'test-csrf-token-proto'
 
-      await adapter.set(`pkce:${state}`, { _type: 'pkce', codeVerifier, returnTo, csrfToken } as PKCEState, 600)
+      await adapter.set(
+        `pkce:${state}`,
+        { _type: 'pkce', codeVerifier, returnTo, csrfToken } as PKCEState,
+        600
+      )
 
       const res = await app.request(`/callback?state=${state}&code=${code}`, {
         headers: { Cookie: `__Host-pkce-csrf=${csrfToken}` },
@@ -239,7 +268,11 @@ describe('OAuth Routes', () => {
       const codeVerifier = 'test-verifier-must-be-at-least-43-chars-long-aaa'
       const csrfToken = 'test-csrf-token-no-cookie'
 
-      await adapter.set(`pkce:${state}`, { _type: 'pkce', codeVerifier, csrfToken } as PKCEState, 600)
+      await adapter.set(
+        `pkce:${state}`,
+        { _type: 'pkce', codeVerifier, csrfToken } as PKCEState,
+        600
+      )
 
       const res = await app.request(`/callback?state=${state}&code=${code}`)
 
@@ -253,7 +286,11 @@ describe('OAuth Routes', () => {
       const codeVerifier = 'test-verifier-must-be-at-least-43-chars-long-aaa'
       const csrfToken = 'expected-csrf'
 
-      await adapter.set(`pkce:${state}`, { _type: 'pkce', codeVerifier, csrfToken } as PKCEState, 600)
+      await adapter.set(
+        `pkce:${state}`,
+        { _type: 'pkce', codeVerifier, csrfToken } as PKCEState,
+        600
+      )
 
       const res = await app.request(`/callback?state=${state}&code=${code}`, {
         headers: { Cookie: `__Host-pkce-csrf=attacker-csrf` },
@@ -266,76 +303,91 @@ describe('OAuth Routes', () => {
 
   describe('POST /logout', () => {
     it('redirects to / if no logout URL can be determined', async () => {
-      auth.cache.cachedAS = null
-      auth.cache.cacheExpiresAt = 0
+      ;(auth as unknown as { cache: DiscoveryCache }).cache.cachedAS = null
+      ;(auth as unknown as { cache: DiscoveryCache }).cache.cacheExpiresAt = 0
       const mockAs = { issuer: config.issuer }
       vi.mocked(oauth.discoveryRequest).mockResolvedValue({} as unknown as Response)
-      vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue(mockAs as oauth.AuthorizationServer)
+      vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue(
+        mockAs as oauth.AuthorizationServer
+      )
 
       const res = await app.request('/logout', { method: 'POST' })
       expect(res.status).toBe(302)
       expect(res.headers.get('Location')).toBe('/')
     })
 
-    it('uses providerHints.logoutUrl if provided', async () => {
-      const customConfig = { ...config, providerHints: { logoutUrl: 'https://test.auth0.com/v2/logout' } }
+    it('uses providerOverrides.logoutUrl if provided', async () => {
+      const customConfig = {
+        ...config,
+        providerOverrides: { logoutUrl: 'https://test.auth0.com/v2/logout' },
+      }
       const customAuth = createBezzie(customConfig)
       const customApp = customAuth.routes()
 
       const mockAs = { issuer: customConfig.issuer }
       vi.mocked(oauth.discoveryRequest).mockResolvedValue({} as unknown as Response)
-      vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue(mockAs as oauth.AuthorizationServer)
+      vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue(
+        mockAs as oauth.AuthorizationServer
+      )
 
       const res = await customApp.request('/logout', { method: 'POST' })
 
       expect(res.status).toBe(302)
-      const location = res.headers.get('Location')
+      const location = (res.headers as Headers).get('Location')
       expect(location).toContain('https://test.auth0.com/v2/logout')
       expect(location).toContain(`client_id=${customConfig.clientId}`)
       expect(location).toContain(`returnTo=${encodeURIComponent(customConfig.baseUrl)}`)
     })
 
     it('redirects to OIDC end_session_endpoint if available', async () => {
-      auth.cache.cachedAS = null
-      auth.cache.cacheExpiresAt = 0
+      ;(auth as unknown as { cache: DiscoveryCache }).cache.cachedAS = null
+      ;(auth as unknown as { cache: DiscoveryCache }).cache.cacheExpiresAt = 0
 
-      const mockAs = { 
+      const mockAs = {
         issuer: config.issuer,
-        end_session_endpoint: `${config.issuer}/oidc/logout`
+        end_session_endpoint: `${config.issuer}/oidc/logout`,
       }
       vi.mocked(oauth.discoveryRequest).mockResolvedValue({} as unknown as Response)
-      vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue(mockAs as oauth.AuthorizationServer)
+      vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue(
+        mockAs as oauth.AuthorizationServer
+      )
 
       const res = await app.request('/logout', { method: 'POST' })
 
       expect(res.status).toBe(302)
-      const location = res.headers.get('Location')
+      const location = (res.headers as Headers).get('Location')
       expect(location).toContain(`${config.issuer}/oidc/logout`)
       expect(location).toContain(`client_id=${config.clientId}`)
       expect(location).toContain(`post_logout_redirect_uri=${encodeURIComponent(config.baseUrl)}`)
     })
 
     it('with valid session cookie - deletes session from adapter, clears cookie, and adds id_token_hint', async () => {
-      auth.cache.cachedAS = null
-      auth.cache.cacheExpiresAt = 0
+      ;(auth as unknown as { cache: DiscoveryCache }).cache.cachedAS = null
+      ;(auth as unknown as { cache: DiscoveryCache }).cache.cacheExpiresAt = 0
       const sessionId = 'test-session-id'
       const idToken = 'mock-id-token'
-      await adapter.set(`session:${sessionId}`, {
-        _type: 'session',
-        accessToken: 'test',
-        refreshToken: 'refresh',
-        idToken,
-        expiresAt: Math.floor(Date.now() / 1000) + 3600,
-        createdAt: Math.floor(Date.now() / 1000),
-        user: { sub: 'user-123' },
-      } as Session, 3600)
+      await adapter.set(
+        `session:${sessionId}`,
+        {
+          _type: 'session',
+          accessToken: 'test',
+          refreshToken: 'refresh',
+          idToken,
+          expiresAt: Math.floor(Date.now() / 1000) + 3600,
+          createdAt: Math.floor(Date.now() / 1000),
+          user: { sub: 'user-123' },
+        } as Session,
+        3600
+      )
 
-      const mockAs = { 
+      const mockAs = {
         issuer: config.issuer,
-        end_session_endpoint: `${config.issuer}/logout`
+        end_session_endpoint: `${config.issuer}/logout`,
       }
       vi.mocked(oauth.discoveryRequest).mockResolvedValue({} as unknown as Response)
-      vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue(mockAs as oauth.AuthorizationServer)
+      vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue(
+        mockAs as oauth.AuthorizationServer
+      )
 
       const res = await app.request('/logout', {
         method: 'POST',
@@ -345,11 +397,11 @@ describe('OAuth Routes', () => {
       })
 
       expect(res.status).toBe(302)
-      const location = res.headers.get('Location')
+      const location = (res.headers as Headers).get('Location')
       expect(location).toContain(`id_token_hint=${idToken}`)
 
       // Check cookie cleared
-      const setCookieHeader = res.headers.get('Set-Cookie')
+      const setCookieHeader = (res.headers as Headers).get('Set-Cookie')
       expect(setCookieHeader).toContain('__Host-session=;')
       expect(setCookieHeader).toContain('Max-Age=0')
       expect(setCookieHeader).toContain('HttpOnly')
@@ -359,27 +411,36 @@ describe('OAuth Routes', () => {
       // Check session deleted from adapter
       expect(await adapter.get(`session:${sessionId}`)).toBeNull()
     })
-    it('uses providerHints.logoutUrl and adds id_token_hint if session present', async () => {
-      const customConfig = { ...config, providerHints: { logoutUrl: 'https://test.auth0.com/v2/logout' } }
+    it('uses providerOverrides.logoutUrl and adds id_token_hint if session present', async () => {
+      const customConfig = {
+        ...config,
+        providerOverrides: { logoutUrl: 'https://test.auth0.com/v2/logout' },
+      }
       const customAuth = createBezzie(customConfig)
       const customApp = customAuth.routes()
 
       const sessionId = 'test-session-id'
       const idToken = 'mock-id-token'
-      await adapter.set(`session:${sessionId}`, {
-        _type: 'session',
-        accessToken: 'test',
-        idToken,
-        expiresAt: Math.floor(Date.now() / 1000) + 3600,
-        createdAt: Math.floor(Date.now() / 1000),
-        user: { sub: 'user-123' },
-      } as Session, 3600)
+      await adapter.set(
+        `session:${sessionId}`,
+        {
+          _type: 'session',
+          accessToken: 'test',
+          idToken,
+          expiresAt: Math.floor(Date.now() / 1000) + 3600,
+          createdAt: Math.floor(Date.now() / 1000),
+          user: { sub: 'user-123' },
+        } as Session,
+        3600
+      )
 
       const mockAs = { issuer: customConfig.issuer }
       vi.mocked(oauth.discoveryRequest).mockResolvedValue({} as unknown as Response)
-      vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue(mockAs as oauth.AuthorizationServer)
+      vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue(
+        mockAs as oauth.AuthorizationServer
+      )
 
-      const res = await customApp.request('/logout', { 
+      const res = await customApp.request('/logout', {
         method: 'POST',
         headers: {
           Cookie: `__Host-session=${sessionId}`,
@@ -387,7 +448,7 @@ describe('OAuth Routes', () => {
       })
 
       expect(res.status).toBe(302)
-      const location = res.headers.get('Location')
+      const location = (res.headers as Headers).get('Location')
       expect(location).toContain('https://test.auth0.com/v2/logout')
       expect(location).toContain(`client_id=${customConfig.clientId}`)
       expect(location).toContain(`id_token_hint=${idToken}`)
