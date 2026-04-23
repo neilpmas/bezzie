@@ -41,7 +41,7 @@ async function authenticate<TUser extends Record<string, unknown> = Record<strin
   }
 
   // 3. Look up the session in KV using SessionStore
-  let session = await sessionStore.get(sessionId)
+  let session = await sessionStore.get(`session:${sessionId}`)
 
   // 4. If no session found or it's a PKCE state → unauthenticated
   if (!session || session._type === 'pkce') {
@@ -51,7 +51,7 @@ async function authenticate<TUser extends Record<string, unknown> = Record<strin
   // 4.5 Check for absolute session expiry (90 days)
   const MAX_SESSION_AGE = 90 * 24 * 60 * 60 // 90 days
   if (Math.floor(Date.now() / 1000) - session.createdAt > MAX_SESSION_AGE) {
-    await sessionStore.delete(sessionId)
+    await sessionStore.delete(`session:${sessionId}`)
     return { type: 'expired' }
   }
 
@@ -65,7 +65,7 @@ async function authenticate<TUser extends Record<string, unknown> = Record<strin
         const client: oauth.Client = { client_id: config.clientId }
         const clientAuth = oauth.ClientSecretPost(config.clientSecret)
 
-        const response = await oauth.refreshTokenGrantRequest(as, client, clientAuth, session.refreshToken)
+        const response = await oauth.refreshTokenGrantRequest(as, client, clientAuth, session.refreshToken, { signal: AbortSignal.timeout(5000) })
 
         try {
           const result = await oauth.processRefreshTokenResponse(as, client, response)
@@ -76,11 +76,11 @@ async function authenticate<TUser extends Record<string, unknown> = Record<strin
           }
           session.expiresAt = Math.floor(Date.now() / 1000) + (result.expires_in || 3600)
 
-          await sessionStore.set(sessionId, session, config.sessionTtlSeconds ?? 30 * 24 * 60 * 60) // 30 days, matches initial session TTL
+          await sessionStore.set(`session:${sessionId}`, session, config.sessionTtlSeconds ?? 30 * 24 * 60 * 60) // 30 days, matches initial session TTL
         } catch (err) {
           if (err instanceof oauth.ResponseBodyError && err.error === 'invalid_grant') {
             // Potential race condition: another request might have already refreshed this token
-            const refreshedSession = await sessionStore.get(sessionId)
+            const refreshedSession = await sessionStore.get(`session:${sessionId}`)
             if (
               refreshedSession &&
               refreshedSession._type === 'session' &&
@@ -90,16 +90,16 @@ async function authenticate<TUser extends Record<string, unknown> = Record<strin
               session = refreshedSession
             } else {
               // Truly failed
-              await sessionStore.delete(sessionId)
+              await sessionStore.delete(`session:${sessionId}`)
               return { type: 'unauthenticated' }
             }
           } else {
-            await sessionStore.delete(sessionId)
+            await sessionStore.delete(`session:${sessionId}`)
             return { type: 'unauthenticated' }
           }
         }
       } catch {
-        await sessionStore.delete(sessionId)
+        await sessionStore.delete(`session:${sessionId}`)
         return { type: 'unauthenticated' }
       }
     }
@@ -116,10 +116,11 @@ async function authenticate<TUser extends Record<string, unknown> = Record<strin
       })
 
       await oauth.validateJwtAccessToken(as, mockReq, config.audience, { [oauth.jwksCache]: cache.jwksCache })
-    } catch {
+    } catch (err) {
       // 9. If JWT invalid → fallback to opaque token (pass through)
       // This allows Bezzie to work with providers that issue opaque access tokens
       // or if the JWT is not verifiable for some reason, but we still have a valid session.
+      console.warn('Bezzie: JWT access token validation failed (falling back to session trust):', err instanceof Error ? err.message : String(err))
     }
   }
 

@@ -119,7 +119,7 @@ describe('OAuth Routes', () => {
     it('with valid state exchanges code, stores session, sets cookie, redirects', async () => {
       const state = 'test-state'
       const code = 'test-code'
-      const codeVerifier = 'test-verifier'
+      const codeVerifier = 'test-verifier-must-be-at-least-43-chars-long-aaa'
       const csrfToken = 'test-csrf-token'
 
       await adapter.set(`pkce:${state}`, { _type: 'pkce', codeVerifier, csrfToken } as PKCEState, 600)
@@ -157,7 +157,7 @@ describe('OAuth Routes', () => {
 
       // Check session in adapter
       const sessionId = cookie!.match(/__Host-session=([^;]+)/)![1]
-      const session = await adapter.get(sessionId) as Session
+      const session = await adapter.get(`session:${sessionId}`) as Session
       expect(session).toBeDefined()
       expect(session!.accessToken).toBe('mock-access-token')
       expect(session!.idToken).toBe('mock-id-token')
@@ -171,7 +171,7 @@ describe('OAuth Routes', () => {
     it('redirects to returnTo after successful login', async () => {
       const state = 'test-state-ret'
       const code = 'test-code'
-      const codeVerifier = 'test-verifier'
+      const codeVerifier = 'test-verifier-must-be-at-least-43-chars-long-aaa'
       const returnTo = '/dashboard'
       const csrfToken = 'test-csrf-token-ret'
 
@@ -202,7 +202,7 @@ describe('OAuth Routes', () => {
     it('rejects external returnTo and falls back to /', async () => {
       const state = 'test-state-evil'
       const code = 'test-code'
-      const codeVerifier = 'test-verifier'
+      const codeVerifier = 'test-verifier-must-be-at-least-43-chars-long-aaa'
       const returnTo = 'https://evil.com/malicious'
       const csrfToken = 'test-csrf-token-evil'
 
@@ -219,7 +219,7 @@ describe('OAuth Routes', () => {
     it('rejects protocol-relative returnTo (//) and falls back to /', async () => {
       const state = 'test-state-proto'
       const code = 'test-code'
-      const codeVerifier = 'test-verifier'
+      const codeVerifier = 'test-verifier-must-be-at-least-43-chars-long-aaa'
       const returnTo = '//evil.com'
       const csrfToken = 'test-csrf-token-proto'
 
@@ -236,7 +236,7 @@ describe('OAuth Routes', () => {
     it('returns 400 if the __Host-pkce-csrf cookie is missing (login-CSRF protection)', async () => {
       const state = 'test-state-no-cookie'
       const code = 'test-code'
-      const codeVerifier = 'test-verifier'
+      const codeVerifier = 'test-verifier-must-be-at-least-43-chars-long-aaa'
       const csrfToken = 'test-csrf-token-no-cookie'
 
       await adapter.set(`pkce:${state}`, { _type: 'pkce', codeVerifier, csrfToken } as PKCEState, 600)
@@ -250,7 +250,7 @@ describe('OAuth Routes', () => {
     it('returns 400 if the __Host-pkce-csrf cookie does not match the stored csrfToken', async () => {
       const state = 'test-state-bad-cookie'
       const code = 'test-code'
-      const codeVerifier = 'test-verifier'
+      const codeVerifier = 'test-verifier-must-be-at-least-43-chars-long-aaa'
       const csrfToken = 'expected-csrf'
 
       await adapter.set(`pkce:${state}`, { _type: 'pkce', codeVerifier, csrfToken } as PKCEState, 600)
@@ -320,7 +320,7 @@ describe('OAuth Routes', () => {
       auth.cache.cacheExpiresAt = 0
       const sessionId = 'test-session-id'
       const idToken = 'mock-id-token'
-      await adapter.set(sessionId, { 
+      await adapter.set(`session:${sessionId}`, {
         _type: 'session',
         accessToken: 'test',
         refreshToken: 'refresh',
@@ -357,7 +357,7 @@ describe('OAuth Routes', () => {
       expect(setCookieHeader).toContain('SameSite=Strict')
 
       // Check session deleted from adapter
-      expect(await adapter.get(sessionId)).toBeNull()
+      expect(await adapter.get(`session:${sessionId}`)).toBeNull()
     })
     it('uses providerHints.logoutUrl and adds id_token_hint if session present', async () => {
       const customConfig = { ...config, providerHints: { logoutUrl: 'https://test.auth0.com/v2/logout' } }
@@ -366,7 +366,7 @@ describe('OAuth Routes', () => {
 
       const sessionId = 'test-session-id'
       const idToken = 'mock-id-token'
-      await adapter.set(sessionId, { 
+      await adapter.set(`session:${sessionId}`, {
         _type: 'session',
         accessToken: 'test',
         idToken,

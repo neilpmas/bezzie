@@ -76,6 +76,10 @@ export function authRoutes<TUser extends Record<string, unknown> = Record<string
     }
     const { codeVerifier, returnTo, csrfToken: storedCsrfToken } = stored
 
+    if (!codeVerifier || codeVerifier.length < 43) {
+      return c.text('Invalid PKCE state', 400)
+    }
+
     // Login-CSRF protection (S4): the cookie set at /login must match the
     // csrfToken stored alongside the PKCE state in KV.
     const cookieCsrfToken = getCookie(c, '__Host-pkce-csrf')
@@ -112,6 +116,7 @@ export function authRoutes<TUser extends Record<string, unknown> = Record<string
       callbackParams,
       `${config.baseUrl}/auth/callback`,
       codeVerifier,
+      { signal: AbortSignal.timeout(5000) },
     )
 
     let result: oauth.TokenEndpointResponse
@@ -152,8 +157,15 @@ export function authRoutes<TUser extends Record<string, unknown> = Record<string
       } as unknown as { sub: string; email?: string } & TUser,
     }
 
+    // Prevent session fixation (S11): if the user already had a session cookie,
+    // remove its KV entry before minting a fresh session.
+    const existingSessionId = getCookie(c, config.cookieName ?? '__Host-session')
+    if (existingSessionId) {
+      await sessionStore.delete(`session:${existingSessionId}`)
+    }
+
     // TTL for session in KV. Set to 30 days as per bug fix 3.
-    await sessionStore.set(sessionId, session, config.sessionTtlSeconds ?? 30 * 24 * 60 * 60)
+    await sessionStore.set(`session:${sessionId}`, session, config.sessionTtlSeconds ?? 30 * 24 * 60 * 60)
 
     setCookie(c, config.cookieName ?? '__Host-session', sessionId, {
       httpOnly: true,
@@ -174,11 +186,11 @@ export function authRoutes<TUser extends Record<string, unknown> = Record<string
     const sessionId = getCookie(c, config.cookieName ?? '__Host-session')
     let idToken: string | undefined
     if (sessionId) {
-      const session = await sessionStore.get(sessionId)
+      const session = await sessionStore.get(`session:${sessionId}`)
       if (session && session._type === 'session') {
         idToken = (session as Session<TUser>).idToken
       }
-      await sessionStore.delete(sessionId)
+      await sessionStore.delete(`session:${sessionId}`)
     }
 
     deleteCookie(c, config.cookieName ?? '__Host-session', {
