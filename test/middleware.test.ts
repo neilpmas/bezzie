@@ -67,7 +67,7 @@ describe('Middleware', () => {
     const sessionId = 'test-session-id'
     const user = { sub: 'user-123', email: 'user@example.com' }
     await adapter.set(
-      sessionId,
+      `session:${sessionId}`,
       {
         _type: 'session',
         accessToken: 'valid-token',
@@ -98,7 +98,7 @@ describe('Middleware', () => {
     const sessionId = 'test-session-id'
     const user = { sub: 'user-123' }
     await adapter.set(
-      sessionId,
+      `session:${sessionId}`,
       {
         _type: 'session',
         accessToken: 'expired-token',
@@ -131,7 +131,7 @@ describe('Middleware', () => {
     expect(data.accessToken).toBe('new-token')
 
     // Check adapter updated
-    const stored = (await adapter.get(sessionId)) as Session
+    const stored = (await adapter.get(`session:${sessionId}`)) as Session
     expect(stored.accessToken).toBe('new-token')
     expect(stored.refreshToken).toBe('new-refresh')
     expect(stored.expiresAt).toBeGreaterThan(Date.now() / 1000)
@@ -140,7 +140,7 @@ describe('Middleware', () => {
   it('failed refresh deletes session and returns 401', async () => {
     const sessionId = 'test-session-id'
     await adapter.set(
-      sessionId,
+      `session:${sessionId}`,
       {
         _type: 'session',
         accessToken: 'expired-token',
@@ -169,13 +169,13 @@ describe('Middleware', () => {
     expect(res.status).toBe(401)
     
     // Check session deleted
-    expect(await adapter.get(sessionId)).toBeNull()
+    expect(await adapter.get(`session:${sessionId}`)).toBeNull()
   })
 
   it('Opaque token fallback - passes through when JWT validation fails', async () => {
     const sessionId = 'test-session-id'
     await adapter.set(
-      sessionId,
+      `session:${sessionId}`,
       {
         _type: 'session',
         accessToken: 'invalid-jwt',
@@ -204,7 +204,7 @@ describe('Middleware', () => {
   it('triggers refresh with 60s buffer', async () => {
     const sessionId = 'test-session-id'
     await adapter.set(
-      sessionId,
+      `session:${sessionId}`,
       {
         _type: 'session',
         accessToken: 'near-expiry-token',
@@ -251,7 +251,7 @@ describe('Middleware', () => {
     appNoAudience.get('/api/me', (c) => c.json({ ok: true }))
 
     const sessionId = 'test-session-id'
-    await adapter.set(sessionId, {
+    await adapter.set(`session:${sessionId}`, {
       _type: 'session',
       accessToken: 'valid-token',
       refreshToken: 'valid-refresh',
@@ -287,7 +287,7 @@ describe('Middleware', () => {
     appWithValidateFalse.get('/api/me', (c) => c.json({ ok: true }))
 
     const sessionId = 'test-session-id'
-    await adapter.set(sessionId, {
+    await adapter.set(`session:${sessionId}`, {
       _type: 'session',
       accessToken: 'opaque-token',
       refreshToken: 'valid-refresh',
@@ -314,7 +314,7 @@ describe('Middleware', () => {
 
     // Initial state: near-expiry token
     await adapter.set(
-      sessionId,
+      `session:${sessionId}`,
       {
         _type: 'session',
         accessToken: oldAccessToken,
@@ -376,7 +376,7 @@ describe('Middleware', () => {
     const sessionId = 'old-session-id'
     const MAX_SESSION_AGE = 90 * 24 * 60 * 60
     await adapter.set(
-      sessionId,
+      `session:${sessionId}`,
       {
         _type: 'session',
         accessToken: 'token',
@@ -398,7 +398,7 @@ describe('Middleware', () => {
     expect(res.headers.get('Location')).toBe('/auth/login')
 
     // Session should be deleted from store
-    expect(await adapter.get(sessionId)).toBeNull()
+    expect(await adapter.get(`session:${sessionId}`)).toBeNull()
   })
 
   it('redirects to custom login path when session is older than 90 days', async () => {
@@ -417,7 +417,7 @@ describe('Middleware', () => {
     const sessionId = 'old-session-id'
     const MAX_SESSION_AGE = 90 * 24 * 60 * 60
     await adapter.set(
-      sessionId,
+      `session:${sessionId}`,
       {
         _type: 'session',
         accessToken: 'token',
@@ -470,7 +470,7 @@ describe('Middleware', () => {
 
     const sessionId = 'test-session-id'
     await adapter1.set(
-      sessionId,
+      `session:${sessionId}`,
       {
         _type: 'session',
         accessToken: 'token',
@@ -491,8 +491,8 @@ describe('Middleware', () => {
     await app2.request('/', { headers: { Cookie: `__Host-session=${sessionId}` } })
 
     expect(oauth.discoveryRequest).toHaveBeenCalledTimes(2)
-    expect(oauth.discoveryRequest).toHaveBeenNthCalledWith(1, new URL(issuer1))
-    expect(oauth.discoveryRequest).toHaveBeenNthCalledWith(2, new URL(issuer2))
+    expect(oauth.discoveryRequest).toHaveBeenNthCalledWith(1, new URL(issuer1), expect.objectContaining({ signal: expect.any(AbortSignal) }))
+    expect(oauth.discoveryRequest).toHaveBeenNthCalledWith(2, new URL(issuer2), expect.objectContaining({ signal: expect.any(AbortSignal) }))
   })
 
   describe('optionalMiddleware', () => {
@@ -526,7 +526,7 @@ describe('Middleware', () => {
       const sessionId = 'test-session-id'
       const user = { sub: 'user-123' }
       await adapter.set(
-        sessionId,
+        `session:${sessionId}`,
         {
           _type: 'session',
           accessToken: 'valid-token',
@@ -585,7 +585,7 @@ describe('Middleware', () => {
 
       const sessionId = 'test-session-id'
       await adapter.set(
-        sessionId,
+        `session:${sessionId}`,
         {
           _type: 'session',
           accessToken: 'expired-token',
@@ -610,7 +610,7 @@ describe('Middleware', () => {
       const data = (await res.json()) as { user?: Record<string, unknown>; accessToken?: string }
       expect(data.user).toBeNull()
       expect(data.accessToken).toBeNull()
-      expect(await adapter.get(sessionId)).toBeNull()
+      expect(await adapter.get(`session:${sessionId}`)).toBeNull()
     })
   })
 })

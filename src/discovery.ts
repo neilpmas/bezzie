@@ -20,7 +20,7 @@ export async function getAuthorizationServer(
   }
   const issuer = new URL(config.issuer)
   try {
-    const response = await oauth.discoveryRequest(issuer)
+    const response = await oauth.discoveryRequest(issuer, { signal: AbortSignal.timeout(5000) })
     const as = await oauth.processDiscoveryResponse(issuer, response)
     const cachedAS = config.providerHints?.tokenEndpoint
       ? { ...as, token_endpoint: config.providerHints.tokenEndpoint }

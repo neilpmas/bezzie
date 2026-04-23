@@ -59,7 +59,7 @@ describe('Generics', () => {
     }
     
     await adapter.set(
-      sessionId,
+      `session:${sessionId}`,
       {
         _type: 'session',
         accessToken: 'valid-token',
