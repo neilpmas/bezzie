@@ -16,11 +16,22 @@ export function authRoutes<TUser extends Record<string, unknown> = Record<string
     const code_verifier = oauth.generateRandomCodeVerifier()
     const code_challenge = await oauth.calculatePKCECodeChallenge(code_verifier)
     const state = oauth.generateRandomState()
+    const csrfToken = oauth.generateRandomState()
 
     const returnTo = c.req.query('returnTo')
 
-    // Store state and codeVerifier in adapter
-    await config.adapter.set(`pkce:${state}`, { _type: 'pkce', codeVerifier: code_verifier, returnTo } as PKCEState, config.pkceStateTtlSeconds ?? 600) // 10 minutes
+    // Store state, codeVerifier and csrfToken in adapter
+    await config.adapter.set(`pkce:${state}`, { _type: 'pkce', codeVerifier: code_verifier, returnTo, csrfToken } as PKCEState, config.pkceStateTtlSeconds ?? 600) // 10 minutes
+
+    // Bind the PKCE state to the user's browser session via a short-lived cookie
+    // to prevent login-CSRF (S4).
+    setCookie(c, '__Host-pkce-csrf', csrfToken, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'Strict',
+      path: '/',
+      maxAge: 600,
+    })
 
     const as = await getAuthorizationServer(config, cache)
     if (!as.authorization_endpoint) {
@@ -63,9 +74,24 @@ export function authRoutes<TUser extends Record<string, unknown> = Record<string
     if (!stored) {
       return c.text('Invalid or expired state', 400)
     }
-    const { codeVerifier, returnTo } = stored
+    const { codeVerifier, returnTo, csrfToken: storedCsrfToken } = stored
+
+    // Login-CSRF protection (S4): the cookie set at /login must match the
+    // csrfToken stored alongside the PKCE state in KV.
+    const cookieCsrfToken = getCookie(c, '__Host-pkce-csrf')
+    if (!cookieCsrfToken || !storedCsrfToken || cookieCsrfToken !== storedCsrfToken) {
+      return c.text('Invalid CSRF token', 400)
+    }
 
     await config.adapter.delete(`pkce:${state}`)
+
+    // Clear the CSRF cookie now that it has served its purpose.
+    deleteCookie(c, '__Host-pkce-csrf', {
+      path: '/',
+      secure: true,
+      httpOnly: true,
+      sameSite: 'Strict',
+    })
 
     const as = await getAuthorizationServer(config, cache)
 

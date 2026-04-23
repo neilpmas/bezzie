@@ -120,8 +120,9 @@ describe('OAuth Routes', () => {
       const state = 'test-state'
       const code = 'test-code'
       const codeVerifier = 'test-verifier'
-      
-      await adapter.set(`pkce:${state}`, { _type: 'pkce', codeVerifier } as PKCEState, 600)
+      const csrfToken = 'test-csrf-token'
+
+      await adapter.set(`pkce:${state}`, { _type: 'pkce', codeVerifier, csrfToken } as PKCEState, 600)
 
       // Setup mocks
       const mockAs = { issuer: config.issuer }
@@ -139,11 +140,13 @@ describe('OAuth Routes', () => {
         email: 'user@example.com',
       } as unknown as oauth.IDToken)
 
-      const res = await app.request(`/callback?state=${state}&code=${code}`)
+      const res = await app.request(`/callback?state=${state}&code=${code}`, {
+        headers: { Cookie: `__Host-pkce-csrf=${csrfToken}` },
+      })
 
       expect(res.status).toBe(302)
       expect(res.headers.get('Location')).toBe('/')
-      
+
       // Check cookie
       const cookie = res.headers.get('Set-Cookie')
       expect(cookie).toContain('__Host-session=')
@@ -170,8 +173,9 @@ describe('OAuth Routes', () => {
       const code = 'test-code'
       const codeVerifier = 'test-verifier'
       const returnTo = '/dashboard'
-      
-      await adapter.set(`pkce:${state}`, { _type: 'pkce', codeVerifier, returnTo } as PKCEState, 600)
+      const csrfToken = 'test-csrf-token-ret'
+
+      await adapter.set(`pkce:${state}`, { _type: 'pkce', codeVerifier, returnTo, csrfToken } as PKCEState, 600)
 
       // Setup mocks
       const mockAs = { issuer: config.issuer }
@@ -187,7 +191,9 @@ describe('OAuth Routes', () => {
         sub: 'user-123',
       } as unknown as oauth.IDToken)
 
-      const res = await app.request(`/callback?state=${state}&code=${code}`)
+      const res = await app.request(`/callback?state=${state}&code=${code}`, {
+        headers: { Cookie: `__Host-pkce-csrf=${csrfToken}` },
+      })
 
       expect(res.status).toBe(302)
       expect(res.headers.get('Location')).toBe('/dashboard')
@@ -198,10 +204,13 @@ describe('OAuth Routes', () => {
       const code = 'test-code'
       const codeVerifier = 'test-verifier'
       const returnTo = 'https://evil.com/malicious'
-      
-      await adapter.set(`pkce:${state}`, { _type: 'pkce', codeVerifier, returnTo } as PKCEState, 600)
+      const csrfToken = 'test-csrf-token-evil'
 
-      const res = await app.request(`/callback?state=${state}&code=${code}`)
+      await adapter.set(`pkce:${state}`, { _type: 'pkce', codeVerifier, returnTo, csrfToken } as PKCEState, 600)
+
+      const res = await app.request(`/callback?state=${state}&code=${code}`, {
+        headers: { Cookie: `__Host-pkce-csrf=${csrfToken}` },
+      })
 
       expect(res.status).toBe(302)
       expect(res.headers.get('Location')).toBe('/')
@@ -212,13 +221,46 @@ describe('OAuth Routes', () => {
       const code = 'test-code'
       const codeVerifier = 'test-verifier'
       const returnTo = '//evil.com'
-      
-      await adapter.set(`pkce:${state}`, { _type: 'pkce', codeVerifier, returnTo } as PKCEState, 600)
+      const csrfToken = 'test-csrf-token-proto'
 
-      const res = await app.request(`/callback?state=${state}&code=${code}`)
+      await adapter.set(`pkce:${state}`, { _type: 'pkce', codeVerifier, returnTo, csrfToken } as PKCEState, 600)
+
+      const res = await app.request(`/callback?state=${state}&code=${code}`, {
+        headers: { Cookie: `__Host-pkce-csrf=${csrfToken}` },
+      })
 
       expect(res.status).toBe(302)
       expect(res.headers.get('Location')).toBe('/')
+    })
+
+    it('returns 400 if the __Host-pkce-csrf cookie is missing (login-CSRF protection)', async () => {
+      const state = 'test-state-no-cookie'
+      const code = 'test-code'
+      const codeVerifier = 'test-verifier'
+      const csrfToken = 'test-csrf-token-no-cookie'
+
+      await adapter.set(`pkce:${state}`, { _type: 'pkce', codeVerifier, csrfToken } as PKCEState, 600)
+
+      const res = await app.request(`/callback?state=${state}&code=${code}`)
+
+      expect(res.status).toBe(400)
+      expect(await res.text()).toBe('Invalid CSRF token')
+    })
+
+    it('returns 400 if the __Host-pkce-csrf cookie does not match the stored csrfToken', async () => {
+      const state = 'test-state-bad-cookie'
+      const code = 'test-code'
+      const codeVerifier = 'test-verifier'
+      const csrfToken = 'expected-csrf'
+
+      await adapter.set(`pkce:${state}`, { _type: 'pkce', codeVerifier, csrfToken } as PKCEState, 600)
+
+      const res = await app.request(`/callback?state=${state}&code=${code}`, {
+        headers: { Cookie: `__Host-pkce-csrf=attacker-csrf` },
+      })
+
+      expect(res.status).toBe(400)
+      expect(await res.text()).toBe('Invalid CSRF token')
     })
   })
 
