@@ -1,6 +1,6 @@
 import { Hono, type MiddlewareHandler } from 'hono'
 import { authRoutes } from './routes'
-import { middleware, optionalMiddleware, type Variables } from './middleware'
+import { middleware, optionalMiddleware, type AuthenticatedVariables, type OptionalVariables } from './middleware'
 import { createDiscoveryCache, type DiscoveryCache } from './discovery'
 
 import { CloudflareKVAdapter, type SessionAdapter } from './session'
@@ -30,7 +30,7 @@ export interface BezzieConfig<TUser extends Record<string, unknown> = Record<str
   audience?: string
 
   /**
-   * Session adapter (e.g. `cloudflareKV(env.SESSION_KV)`).
+   * Session adapter (e.g. `cloudflareKVAdapter(env.SESSION_KV)`).
    */
   adapter: SessionAdapter<TUser>
 
@@ -50,9 +50,9 @@ export interface BezzieConfig<TUser extends Record<string, unknown> = Record<str
   validateAccessToken?: boolean
 
   /**
-   * Optional tweaks for specific providers.
+   * Hard overrides for specific provider values that cannot be derived from discovery.
    */
-  providerHints?: {
+  providerOverrides?: {
     /**
      * Custom logout URL if different from the default OIDC logout.
      */
@@ -104,7 +104,7 @@ export const providers = {
    */
   auth0: (domain: string) => ({
     issuer: `https://${domain}`,
-    providerHints: {
+    providerOverrides: {
       logoutUrl: `https://${domain}/v2/logout`,
     },
   }),
@@ -134,7 +134,7 @@ export const providers = {
 /**
  * Creates a Cloudflare KV session adapter.
  */
-function cloudflareKV<TUser extends Record<string, unknown> = Record<string, unknown>>(
+function cloudflareKVAdapter<TUser extends Record<string, unknown> = Record<string, unknown>>(
   kv: KVNamespace
 ): SessionAdapter<TUser> {
   return new CloudflareKVAdapter<TUser>(kv)
@@ -152,18 +152,12 @@ export interface Bezzie<TUser extends Record<string, unknown> = Record<string, u
   /**
    * Returns a Hono middleware that protects routes and manages sessions.
    */
-  middleware: () => MiddlewareHandler<{ Variables: Variables<TUser> }>
+  middleware: () => MiddlewareHandler<{ Variables: AuthenticatedVariables<TUser> }>
 
   /**
    * Returns a Hono middleware that sets user context if a session exists but always calls next().
    */
-  optionalMiddleware: () => MiddlewareHandler<{ Variables: Variables<TUser> }>
-
-  /**
-   * Internal discovery cache.
-   * @internal
-   */
-  cache: DiscoveryCache
+  optionalMiddleware: () => MiddlewareHandler<{ Variables: OptionalVariables<TUser> }>
 }
 
 /**
@@ -201,10 +195,10 @@ function createBezzie<TUser extends Record<string, unknown> = Record<string, unk
     middleware: () => middleware(config, cache),
     optionalMiddleware: () => optionalMiddleware(config, cache),
     cache,
-  }
+  } as Bezzie<TUser> & { cache: DiscoveryCache }
 }
 
-export { createBezzie, cloudflareKV, middleware, optionalMiddleware }
-export type { Variables } from './middleware'
+export { createBezzie, cloudflareKVAdapter, middleware, optionalMiddleware }
+export type { Variables, AuthenticatedVariables, OptionalVariables } from './middleware'
 export type { SessionAdapter, PKCEState, Session } from './session'
 export { CloudflareKVAdapter, RedisAdapter, MemoryAdapter } from './session'

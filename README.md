@@ -33,13 +33,13 @@ wrangler secret put AUTH0_CLIENT_SECRET
 
 **4. Wire it up:**
 ```typescript
-import { createBezzie, providers, cloudflareKV } from 'bezzie'
+import { createBezzie, providers, cloudflareKVAdapter } from 'bezzie'
 
 const auth = createBezzie({
   ...providers.auth0('your-tenant.auth0.com'),
   clientId: 'xxx',
   clientSecret: env.AUTH0_CLIENT_SECRET,
-  adapter: cloudflareKV(env.SESSION_KV),
+  adapter: cloudflareKVAdapter(env.SESSION_KV),
   baseUrl: 'https://app.yourproject.com',
 })
 
@@ -75,14 +75,14 @@ There's no open source library for this specific combination (BFF OAuth on Cloud
 ## Usage
 
 ```typescript
-import { createBezzie, providers, cloudflareKV } from 'bezzie'
+import { createBezzie, providers, cloudflareKVAdapter } from 'bezzie'
 
 const auth = createBezzie({
   ...providers.auth0('your-tenant.auth0.com'),
   clientId: 'xxx',
   clientSecret: env.AUTH0_CLIENT_SECRET,
   audience: 'https://api.yourproject.com',
-  adapter: cloudflareKV(env.SESSION_KV),
+  adapter: cloudflareKVAdapter(env.SESSION_KV),
   baseUrl: 'https://app.yourproject.com',
 })
 
@@ -193,9 +193,9 @@ Bezzie supports multiple session storage backends:
 ### Cloudflare KV
 Recommended for production on Cloudflare Workers.
 ```typescript
-import { cloudflareKV } from 'bezzie'
+import { cloudflareKVAdapter } from 'bezzie'
 // ...
-adapter: cloudflareKV(env.SESSION_KV)
+adapter: cloudflareKVAdapter(env.SESSION_KV)
 ```
 
 ### Redis (Upstash)
@@ -224,9 +224,9 @@ adapter: new MemoryAdapter()
 | `clientId` | `string` | OAuth client ID |
 | `clientSecret` | `string` | OAuth client secret — keep in Workers secrets |
 | `audience` | `string` | API audience identifier |
-| `adapter` | `SessionAdapter` | Session adapter (e.g. `cloudflareKV(env.SESSION_KV)`) |
+| `adapter` | `SessionAdapter` | Session adapter (e.g. `cloudflareKVAdapter(env.SESSION_KV)`) |
 | `baseUrl` | `string` | Base URL of your application (used for callback and redirects) |
-| `providerHints` | `object` | Optional tweaks for specific providers (`logoutUrl`, `tokenEndpoint`) |
+| `providerOverrides` | `object` | Hard overrides for specific provider values (`logoutUrl`, `tokenEndpoint`) |
 
 ---
 

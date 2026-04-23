@@ -9,7 +9,10 @@ import type { BezzieConfig } from './index'
  * Hono context variables provided by Bezzie middleware.
  * These are what downstream route handlers read from `c.var`.
  */
-export type Variables<TUser extends Record<string, unknown> = Record<string, unknown>> = {
+/**
+ * Hono context variables guaranteed to be present in routes protected by `middleware()`.
+ */
+export type AuthenticatedVariables<TUser extends Record<string, unknown> = Record<string, unknown>> = {
   /**
    * The authenticated user's information.
    */
@@ -19,6 +22,25 @@ export type Variables<TUser extends Record<string, unknown> = Record<string, unk
    */
   accessToken: string
 }
+
+/**
+ * Hono context variables that may be present in routes using `optionalMiddleware()`.
+ */
+export type OptionalVariables<TUser extends Record<string, unknown> = Record<string, unknown>> = {
+  /**
+   * The authenticated user's information, if a valid session exists.
+   */
+  user?: Session<TUser>['user']
+  /**
+   * The current OAuth access token, if a valid session exists.
+   */
+  accessToken?: string
+}
+
+/**
+ * Alias for `AuthenticatedVariables` — the common case for protected routes.
+ */
+export type Variables<TUser extends Record<string, unknown> = Record<string, unknown>> = AuthenticatedVariables<TUser>
 
 type AuthResult<TUser extends Record<string, unknown> = Record<string, unknown>> =
   | { type: 'authenticated'; user: Session<TUser>['user']; accessToken: string }
@@ -130,7 +152,7 @@ async function authenticate<TUser extends Record<string, unknown> = Record<strin
 export function middleware<TUser extends Record<string, unknown> = Record<string, unknown>>(
   config: BezzieConfig<TUser>,
   cache: DiscoveryCache
-): MiddlewareHandler<{ Variables: Variables<TUser> }> {
+): MiddlewareHandler<{ Variables: AuthenticatedVariables<TUser> }> {
   return async (c, next) => {
     const result = await authenticate(c, config, cache)
 
@@ -157,7 +179,7 @@ export function middleware<TUser extends Record<string, unknown> = Record<string
 export function optionalMiddleware<TUser extends Record<string, unknown> = Record<string, unknown>>(
   config: BezzieConfig<TUser>,
   cache: DiscoveryCache
-): MiddlewareHandler<{ Variables: Variables<TUser> }> {
+): MiddlewareHandler<{ Variables: OptionalVariables<TUser> }> {
   return async (c, next) => {
     const result = await authenticate(c, config, cache)
 

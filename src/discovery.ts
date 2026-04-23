@@ -22,8 +22,8 @@ export async function getAuthorizationServer(
   try {
     const response = await oauth.discoveryRequest(issuer, { signal: AbortSignal.timeout(5000) })
     const as = await oauth.processDiscoveryResponse(issuer, response)
-    const cachedAS = config.providerHints?.tokenEndpoint
-      ? { ...as, token_endpoint: config.providerHints.tokenEndpoint }
+    const cachedAS = config.providerOverrides?.tokenEndpoint
+      ? { ...as, token_endpoint: config.providerOverrides.tokenEndpoint }
       : as
     cache.cachedAS = cachedAS
     cache.cacheExpiresAt = Date.now() + 60 * 60 * 1000

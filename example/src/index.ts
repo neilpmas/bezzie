@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { createBezzie, providers, cloudflareKV, type Variables } from '../../src'
+import { createBezzie, providers, cloudflareKVAdapter, type Variables } from '../../src'
 
 /**
  * Environment bindings for the Worker
@@ -22,7 +22,7 @@ export default {
       clientId: 'your-client-id',
       clientSecret: env.AUTH0_CLIENT_SECRET,
       audience: 'https://api.yourproject.com',
-      adapter: cloudflareKV(env.SESSION_KV),
+      adapter: cloudflareKVAdapter(env.SESSION_KV),
       baseUrl: baseUrl,
     })
 

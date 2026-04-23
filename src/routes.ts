@@ -203,8 +203,8 @@ export function authRoutes<TUser extends Record<string, unknown> = Record<string
     const as = await getAuthorizationServer(config, cache)
 
     let logoutUrl: URL
-    if (config.providerHints?.logoutUrl) {
-      logoutUrl = new URL(config.providerHints.logoutUrl)
+    if (config.providerOverrides?.logoutUrl) {
+      logoutUrl = new URL(config.providerOverrides.logoutUrl)
       logoutUrl.searchParams.set('client_id', config.clientId)
       logoutUrl.searchParams.set('returnTo', config.baseUrl)
       if (idToken) {
