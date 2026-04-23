@@ -248,6 +248,20 @@ wrangler secret put AUTH0_CLIENT_SECRET
 
 ---
 
+## Alternatives
+
+| | Bezzie | Auth.js (NextAuth) | Lucia | Roll your own (oauth4webapi) |
+|---|---|---|---|---|
+| BFF pattern (tokens never in browser) | ✅ | ✅ (some adapters) | ❌ | You decide |
+| Cloudflare Workers native | ✅ | ⚠️ Edge adapter | ⚠️ | ✅ |
+| Hono integration | ✅ | ❌ | ❌ | ✅ |
+| OIDC discovery | ✅ | ✅ | ❌ | ✅ |
+| Token refresh | ✅ | ✅ | Manual | Manual |
+| Pluggable session storage | ✅ (KV, Redis, Memory) | ✅ | ✅ | Manual |
+| Zero Node.js deps | ✅ | ❌ | ✅ | ✅ |
+
+---
+
 ## Stack
 
 | Component | Choice |
@@ -262,6 +276,12 @@ wrangler secret put AUTH0_CLIENT_SECRET
 ## Status
 
 v0.1.0 — pre-release
+
+---
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for release history.
 
 ---
 

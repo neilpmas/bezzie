@@ -193,7 +193,7 @@ export const providers = {
   /**
    * Auth0 provider configuration.
    */
-  auth0: (domain: string) => ({
+  auth0: (domain: string): Pick<BezzieConfig, 'issuer' | 'providerOverrides'> => ({
     issuer: `https://${domain}`,
     providerOverrides: {
       logoutUrl: `https://${domain}/v2/logout`,
@@ -203,21 +203,21 @@ export const providers = {
   /**
    * Okta provider configuration.
    */
-  okta: (domain: string) => ({
+  okta: (domain: string): Pick<BezzieConfig, 'issuer'> => ({
     issuer: `https://${domain}/oauth2/default`,
   }),
 
   /**
    * Keycloak provider configuration.
    */
-  keycloak: (baseUrl: string, realm: string) => ({
+  keycloak: (baseUrl: string, realm: string): Pick<BezzieConfig, 'issuer'> => ({
     issuer: `${baseUrl}/realms/${realm}`,
   }),
 
   /**
    * Google provider configuration.
    */
-  google: () => ({
+  google: (): Pick<BezzieConfig, 'issuer'> => ({
     issuer: 'https://accounts.google.com',
   }),
 }
