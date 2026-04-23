@@ -11,8 +11,8 @@ export function createDiscoveryCache(): DiscoveryCache {
   return { cachedAS: null, cacheExpiresAt: 0, jwksCache: {} }
 }
 
-export async function getAuthorizationServer(
-  config: BezzieConfig,
+export async function getAuthorizationServer<TUser extends Record<string, unknown> = Record<string, unknown>>(
+  config: BezzieConfig<TUser>,
   cache: DiscoveryCache
 ): Promise<oauth.AuthorizationServer> {
   if (cache.cachedAS && Date.now() < cache.cacheExpiresAt) {

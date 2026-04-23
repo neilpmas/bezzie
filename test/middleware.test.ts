@@ -495,6 +495,113 @@ describe('Middleware', () => {
     expect(oauth.discoveryRequest).toHaveBeenNthCalledWith(2, new URL(issuer2), expect.objectContaining({ signal: expect.any(AbortSignal) }))
   })
 
+  describe('onRefresh hook', () => {
+    it('calls onRefresh with correct context after a successful refresh', async () => {
+      const onRefresh = vi.fn()
+      const localAdapter = new MemoryAdapter()
+      const localAuth = createBezzie({
+        issuer,
+        clientId: 'test-client-id',
+        clientSecret: 'test-client-secret',
+        audience: 'https://api.test.com',
+        adapter: localAdapter,
+        baseUrl: 'https://app.test.com',
+        onRefresh,
+      })
+      const localApp = new Hono<{ Variables: Variables }>()
+      localApp.use('/api/*', localAuth.middleware())
+      localApp.get('/api/me', (c) => c.json({ ok: true }))
+
+      const sessionId = 'refresh-session'
+      const prevExpiresAt = Math.floor(Date.now() / 1000) - 10
+      await localAdapter.set(
+        `session:${sessionId}`,
+        {
+          _type: 'session',
+          accessToken: 'expired',
+          refreshToken: 'refresh',
+          expiresAt: prevExpiresAt,
+          createdAt: Math.floor(Date.now() / 1000) - 1000,
+          user: { sub: 'user-refresh' },
+        },
+        3600
+      )
+
+      vi.mocked(oauth.refreshTokenGrantRequest).mockResolvedValue({} as Response)
+      vi.mocked(oauth.processRefreshTokenResponse).mockResolvedValue({
+        access_token: 'new-token',
+        expires_in: 3600,
+        token_type: 'bearer',
+      } as oauth.TokenEndpointResponse)
+      vi.mocked(oauth.validateJwtAccessToken).mockResolvedValue({} as oauth.JWTAccessTokenClaims)
+
+      const res = await localApp.request('/api/me', {
+        headers: { Cookie: `__Host-session=${sessionId}` },
+      })
+
+      expect(res.status).toBe(200)
+      expect(onRefresh).toHaveBeenCalledTimes(1)
+      const ctx = onRefresh.mock.calls[0][0]
+      expect(ctx.sessionId).toBe(sessionId)
+      expect(ctx.user).toEqual({ sub: 'user-refresh' })
+      expect(ctx.previousExpiresAt).toBe(prevExpiresAt)
+      expect(ctx.newExpiresAt).toBeGreaterThan(prevExpiresAt)
+      expect(ctx.c).toBeDefined()
+    })
+
+    it('onRefresh throwing routes to onError, request still succeeds', async () => {
+      const hookErr = new Error('onRefresh boom')
+      const onRefresh = vi.fn().mockRejectedValue(hookErr)
+      const onError = vi.fn()
+      const localAdapter = new MemoryAdapter()
+      const localAuth = createBezzie({
+        issuer,
+        clientId: 'test-client-id',
+        clientSecret: 'test-client-secret',
+        audience: 'https://api.test.com',
+        adapter: localAdapter,
+        baseUrl: 'https://app.test.com',
+        onRefresh,
+        onError,
+      })
+      const localApp = new Hono<{ Variables: Variables }>()
+      localApp.use('/api/*', localAuth.middleware())
+      localApp.get('/api/me', (c) => c.json({ ok: true }))
+
+      const sessionId = 'refresh-err-session'
+      await localAdapter.set(
+        `session:${sessionId}`,
+        {
+          _type: 'session',
+          accessToken: 'expired',
+          refreshToken: 'refresh',
+          expiresAt: Math.floor(Date.now() / 1000) - 10,
+          createdAt: Math.floor(Date.now() / 1000) - 1000,
+          user: { sub: 'u' },
+        },
+        3600
+      )
+
+      vi.mocked(oauth.refreshTokenGrantRequest).mockResolvedValue({} as Response)
+      vi.mocked(oauth.processRefreshTokenResponse).mockResolvedValue({
+        access_token: 'new-token',
+        expires_in: 3600,
+        token_type: 'bearer',
+      } as oauth.TokenEndpointResponse)
+      vi.mocked(oauth.validateJwtAccessToken).mockResolvedValue({} as oauth.JWTAccessTokenClaims)
+
+      const res = await localApp.request('/api/me', {
+        headers: { Cookie: `__Host-session=${sessionId}` },
+      })
+
+      expect(res.status).toBe(200)
+      expect(onRefresh).toHaveBeenCalledTimes(1)
+      expect(onError).toHaveBeenCalledTimes(1)
+      expect(onError.mock.calls[0][0]).toBe(hookErr)
+      expect(onError.mock.calls[0][1].hook).toBe('onRefresh')
+    })
+  })
+
   describe('optionalMiddleware', () => {
     it('passes through with no cookie and no context set', async () => {
       app = new Hono<{ Variables: Variables }>()

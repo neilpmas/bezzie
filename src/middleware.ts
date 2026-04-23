@@ -42,6 +42,45 @@ export type OptionalVariables<TUser extends Record<string, unknown> = Record<str
  */
 export type Variables<TUser extends Record<string, unknown> = Record<string, unknown>> = AuthenticatedVariables<TUser>
 
+/**
+ * Context passed to the `onLogin` lifecycle hook.
+ */
+export interface LoginHookContext<TUser extends Record<string, unknown> = Record<string, unknown>> {
+  user: Session<TUser>['user']
+  sessionId: string
+  tokens: { accessToken: string; expiresAt: number }
+  isNewSession: boolean
+  c: Context
+}
+
+/**
+ * Context passed to the `onRefresh` lifecycle hook.
+ */
+export interface RefreshHookContext<TUser extends Record<string, unknown> = Record<string, unknown>> {
+  user: Session<TUser>['user']
+  sessionId: string
+  previousExpiresAt: number
+  newExpiresAt: number
+  c: Context
+}
+
+/**
+ * Context passed to the `onLogout` lifecycle hook.
+ */
+export interface LogoutHookContext<TUser extends Record<string, unknown> = Record<string, unknown>> {
+  user: Session<TUser>['user']
+  sessionId: string
+  c: Context
+}
+
+/**
+ * Context passed to the `onError` hook when a non-fatal lifecycle hook throws.
+ */
+export interface HookErrorContext {
+  hook: 'onLogin' | 'onRefresh' | 'onLogout'
+  c: Context
+}
+
 type AuthResult<TUser extends Record<string, unknown> = Record<string, unknown>> =
   | { type: 'authenticated'; user: Session<TUser>['user']; accessToken: string }
   | { type: 'unauthenticated' }
@@ -91,6 +130,8 @@ async function authenticate<TUser extends Record<string, unknown> = Record<strin
 
         try {
           const result = await oauth.processRefreshTokenResponse(as, client, response)
+          // Capture previous expiresAt before overwriting, for onRefresh hook.
+          const previousExpiresAt = session.expiresAt
           // Update the session in KV with new tokens and new expiresAt
           session.accessToken = result.access_token
           if (result.refresh_token) {
@@ -99,6 +140,21 @@ async function authenticate<TUser extends Record<string, unknown> = Record<strin
           session.expiresAt = Math.floor(Date.now() / 1000) + (result.expires_in || 3600)
 
           await sessionStore.set(`session:${sessionId}`, session, config.sessionTtlSeconds ?? 30 * 24 * 60 * 60) // 30 days, matches initial session TTL
+
+          if (config.onRefresh) {
+            try {
+              await config.onRefresh({
+                user: session.user,
+                sessionId,
+                previousExpiresAt,
+                newExpiresAt: session.expiresAt,
+                c,
+              })
+            } catch (hookErr) {
+              const handler = config.onError ?? ((e: unknown) => console.error('Bezzie: onRefresh hook threw:', e instanceof Error ? e.message : String(e)))
+              handler(hookErr, { hook: 'onRefresh', c })
+            }
+          }
         } catch (err) {
           if (err instanceof oauth.ResponseBodyError && err.error === 'invalid_grant') {
             // Potential race condition: another request might have already refreshed this token
