@@ -16,6 +16,11 @@ export interface PKCEState {
    * URL to redirect to after successful authentication.
    */
   returnTo?: string
+  /**
+   * CSRF token bound to the user's browser session via the `__Host-pkce-csrf` cookie.
+   * Used to prevent login-CSRF attacks (S4).
+   */
+  csrfToken: string
 }
 
 /**
