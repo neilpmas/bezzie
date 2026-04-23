@@ -29,6 +29,7 @@
 ## Unreleased
 
 ### Added
+- Subpath exports for adapters (`/cloudflare`, `/redis`, `/memory`) to support tree-shaking
 - `routes` config option to allow consumers to override the default internal auth route paths
 - Automated releases via `release-please`
 - `optionalMiddleware()` — middleware that sets user context if a session exists but always calls next()

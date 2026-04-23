@@ -24,6 +24,18 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./cloudflare": {
+      "import": "./dist/adapters/cloudflare-kv.js",
+      "types": "./dist/adapters/cloudflare-kv.d.ts"
+    },
+    "./redis": {
+      "import": "./dist/adapters/redis.js",
+      "types": "./dist/adapters/redis.d.ts"
+    },
+    "./memory": {
+      "import": "./dist/adapters/memory.js",
+      "types": "./dist/adapters/memory.d.ts"
     }
   },
   "files": [
