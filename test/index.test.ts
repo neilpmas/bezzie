@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { createBezzie, MemoryAdapter, providers, type BezzieConfig } from '../src'
+import { createBezzie, memoryAdapter, providers, type BezzieConfig } from '../src'
 
 describe('createBezzie', () => {
   it('returns an object with routes and middleware', () => {
@@ -8,7 +8,7 @@ describe('createBezzie', () => {
       clientId: 'test-client-id',
       clientSecret: 'test-client-secret',
       audience: 'https://api.test.com',
-      adapter: new MemoryAdapter(),
+      adapter: memoryAdapter(),
       baseUrl: 'https://app.test.com',
     })
 
@@ -22,7 +22,7 @@ describe('createBezzie', () => {
       clientId: 'test-client-id',
       clientSecret: 'test-client-secret',
       audience: 'https://api.test.com',
-      adapter: new MemoryAdapter(),
+      adapter: memoryAdapter(),
       baseUrl: 'https://app.test.com',
     }
 
@@ -39,7 +39,7 @@ describe('createBezzie', () => {
         issuer: 'https://test.auth0.com',
         clientId: 'test-client-id',
         clientSecret: 'test-client-secret',
-        adapter: new MemoryAdapter(),
+        adapter: memoryAdapter(),
         baseUrl: 'https://app.test.com',
       }
       delete config[key as keyof BezzieConfig]
@@ -52,7 +52,7 @@ describe('createBezzie', () => {
       issuer: 'http://test.auth0.com',
       clientId: 'test-client-id',
       clientSecret: 'test-client-secret',
-      adapter: new MemoryAdapter(),
+      adapter: memoryAdapter(),
       baseUrl: 'https://app.test.com',
     }
     expect(() => createBezzie(config)).toThrow('Bezzie: issuer must start with https://')
@@ -63,7 +63,7 @@ describe('createBezzie', () => {
       issuer: 'https://not a valid url',
       clientId: 'test-client-id',
       clientSecret: 'test-client-secret',
-      adapter: new MemoryAdapter(),
+      adapter: memoryAdapter(),
       baseUrl: 'https://app.test.com',
     }
     expect(() => createBezzie(config)).toThrow('Bezzie: issuer must be a valid URL')

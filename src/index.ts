@@ -12,7 +12,8 @@ import {
 } from './middleware'
 import { createDiscoveryCache, type DiscoveryCache } from './discovery'
 
-import { CloudflareKVAdapter, type SessionAdapter } from './session'
+import type { SessionAdapter, SessionAdapterFactory } from './session'
+import { ConfigError } from './errors'
 
 /**
  * Configuration for Bezzie.
@@ -39,9 +40,13 @@ export interface BezzieConfig<TUser extends Record<string, unknown> = Record<str
   audience?: string
 
   /**
-   * Session adapter (e.g. `cloudflareKVAdapter(env.SESSION_KV)`).
+   * Session adapter factory (e.g. `cloudflareKVAdapter(env.SESSION_KV)`).
+   *
+   * The factory is called once during `createBezzie` with `TUser` inferred from
+   * the `createBezzie` type parameter, so callers don't need to specify `TUser`
+   * twice.
    */
-  adapter: SessionAdapter<TUser>
+  adapter: SessionAdapterFactory
 
   /**
    * Base URL of your application (used for callback and redirects).
@@ -145,6 +150,15 @@ export interface BezzieConfig<TUser extends Record<string, unknown> = Record<str
 }
 
 /**
+ * Resolved Bezzie configuration where the adapter factory has been invoked.
+ *
+ * Internal — routes and middleware use this so they can call `config.adapter.get(...)`
+ * etc. directly, rather than dealing with a factory function.
+ */
+export type ResolvedBezzieConfig<TUser extends Record<string, unknown> = Record<string, unknown>> =
+  Omit<BezzieConfig<TUser>, 'adapter'> & { adapter: SessionAdapter<TUser> }
+
+/**
  * Common OIDC provider configurations.
  */
 export const providers = {
@@ -181,12 +195,11 @@ export const providers = {
 }
 
 /**
- * Creates a Cloudflare KV session adapter.
+ * Helper for consumers writing custom adapters — provides type inference for
+ * the factory function without any runtime behaviour.
  */
-function cloudflareKVAdapter<TUser extends Record<string, unknown> = Record<string, unknown>>(
-  kv: KVNamespace
-): SessionAdapter<TUser> {
-  return new CloudflareKVAdapter<TUser>(kv)
+export function defineAdapter(factory: SessionAdapterFactory): SessionAdapterFactory {
+  return factory
 }
 
 /**
@@ -214,7 +227,7 @@ export interface Bezzie<TUser extends Record<string, unknown> = Record<string, u
  *
  * @param config Bezzie configuration
  * @returns Bezzie instance
- * @throws {Error} if required configuration is missing or invalid
+ * @throws {ConfigError} if required configuration is missing or invalid
  */
 function createBezzie<TUser extends Record<string, unknown> = Record<string, unknown>>(
   config: BezzieConfig<TUser>
@@ -222,32 +235,38 @@ function createBezzie<TUser extends Record<string, unknown> = Record<string, unk
   const required = ['issuer', 'clientId', 'clientSecret', 'adapter', 'baseUrl']
   for (const key of required) {
     if (!config[key as keyof BezzieConfig<TUser>]) {
-      throw new Error(`Bezzie: missing required config: ${key}`)
+      throw new ConfigError('config_invalid', `Bezzie: missing required config: ${key}`)
     }
   }
 
   if (!config.issuer.startsWith('https://')) {
-    throw new Error('Bezzie: issuer must start with https://')
+    throw new ConfigError('config_invalid', 'Bezzie: issuer must start with https://')
   }
 
   try {
     new URL(config.issuer)
   } catch {
-    throw new Error('Bezzie: issuer must be a valid URL')
+    throw new ConfigError('config_invalid', 'Bezzie: issuer must be a valid URL')
   }
 
+  const adapter = config.adapter<TUser>()
+  const resolvedConfig: ResolvedBezzieConfig<TUser> = { ...config, adapter }
+
   const cache = createDiscoveryCache()
-  const router = authRoutes(config, cache)
+  const router = authRoutes(resolvedConfig, cache)
 
   return {
     routes: () => router,
-    middleware: () => middleware(config, cache),
-    optionalMiddleware: () => optionalMiddleware(config, cache),
+    middleware: () => middleware(resolvedConfig, cache),
+    optionalMiddleware: () => optionalMiddleware(resolvedConfig, cache),
     cache,
   } as Bezzie<TUser> & { cache: DiscoveryCache }
 }
 
-export { createBezzie, cloudflareKVAdapter, middleware, optionalMiddleware }
+export { createBezzie, middleware, optionalMiddleware }
+export { cloudflareKVAdapter } from './adapters/cloudflare-kv'
+export { redisAdapter } from './adapters/redis'
+export { memoryAdapter } from './adapters/memory'
 export type {
   Variables,
   AuthenticatedVariables,
@@ -257,5 +276,15 @@ export type {
   LogoutHookContext,
   HookErrorContext,
 } from './middleware'
-export type { SessionAdapter, PKCEState, Session, StoredSession } from './session'
+export type { SessionAdapter, SessionAdapterFactory, PKCEState, Session, StoredSession } from './session'
 export { CloudflareKVAdapter, RedisAdapter, MemoryAdapter } from './session'
+export {
+  BezzieError,
+  DiscoveryError,
+  CallbackError,
+  TokenExchangeError,
+  RefreshError,
+  SessionStoreError,
+  ConfigError,
+} from './errors'
+export type { BezzieErrorCode, BezzieErrorOptions } from './errors'

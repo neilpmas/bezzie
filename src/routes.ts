@@ -3,10 +3,10 @@ import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
 import * as oauth from 'oauth4webapi'
 import { getAuthorizationServer, type DiscoveryCache } from './discovery'
 import type { Session, PKCEState } from './session'
-import type { BezzieConfig } from './index'
+import type { ResolvedBezzieConfig } from './index'
 
 export function authRoutes<TUser extends Record<string, unknown> = Record<string, unknown>>(
-  config: BezzieConfig<TUser>,
+  config: ResolvedBezzieConfig<TUser>,
   cache: DiscoveryCache
 ) {
   const router = new Hono()

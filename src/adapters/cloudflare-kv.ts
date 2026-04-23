@@ -1,5 +1,6 @@
 import { Session } from '../session'
-import { PKCEState, SessionAdapter } from './types'
+import { PKCEState, SessionAdapter, SessionAdapterFactory } from './types'
+import { SessionStoreError } from '../errors'
 
 export class CloudflareKVAdapter<TUser extends Record<string, unknown> = Record<string, unknown>>
   implements SessionAdapter<TUser>
@@ -16,7 +17,10 @@ export class CloudflareKVAdapter<TUser extends Record<string, unknown> = Record<
     ttlSeconds: number
   ): Promise<void> {
     if (ttlSeconds < 60) {
-      throw new Error('Bezzie: KV TTL must be at least 60 seconds')
+      throw new SessionStoreError(
+        'session_storage_failed',
+        'Bezzie: KV TTL must be at least 60 seconds'
+      )
     }
     await this.kv.put(sessionId, JSON.stringify(session), {
       expirationTtl: ttlSeconds,
@@ -26,4 +30,12 @@ export class CloudflareKVAdapter<TUser extends Record<string, unknown> = Record<
   async delete(sessionId: string): Promise<void> {
     await this.kv.delete(sessionId)
   }
+}
+
+/**
+ * Creates a Cloudflare KV session adapter factory.
+ */
+export function cloudflareKVAdapter(kv: KVNamespace): SessionAdapterFactory {
+  return <TUser extends Record<string, unknown> = Record<string, unknown>>(): SessionAdapter<TUser> =>
+    new CloudflareKVAdapter<TUser>(kv)
 }

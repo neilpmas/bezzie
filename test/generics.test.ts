@@ -33,7 +33,7 @@ describe('Generics', () => {
       issuer: 'https://test.auth0.com',
       clientId: 'test-client-id',
       clientSecret: 'test-client-secret',
-      adapter,
+      adapter: () => adapter,
       baseUrl: 'https://app.test.com',
     }
 
