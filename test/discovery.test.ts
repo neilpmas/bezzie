@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { getAuthorizationServer, createDiscoveryCache } from '../src/discovery'
 import * as oauth from 'oauth4webapi'
 import type { BezzieConfig } from '../src'
-import { MemoryAdapter } from '../src'
+import { memoryAdapter } from '../src'
 
 vi.mock('oauth4webapi', async () => {
   const actual = await vi.importActual('oauth4webapi')
@@ -19,7 +19,7 @@ describe('Discovery', () => {
     issuer,
     clientId: 'test-client-id',
     clientSecret: 'test-client-secret',
-    adapter: new MemoryAdapter(),
+    adapter: memoryAdapter(),
     baseUrl: 'https://app.test.com',
   }
 

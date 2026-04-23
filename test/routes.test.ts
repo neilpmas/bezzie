@@ -23,7 +23,7 @@ describe('OAuth Routes', () => {
     clientId: 'test-client-id',
     clientSecret: 'test-client-secret',
     audience: 'https://api.test.com',
-    adapter,
+    adapter: () => adapter,
     baseUrl: 'https://app.test.com',
   }
 
@@ -265,7 +265,7 @@ describe('OAuth Routes', () => {
     it('calls onLogin hook with correct context after successful login', async () => {
       const onLogin = vi.fn()
       const localAdapter = new MemoryAdapter()
-      const localAuth = createBezzie({ ...config, adapter: localAdapter, onLogin })
+      const localAuth = createBezzie({ ...config, adapter: () => localAdapter, onLogin })
       const localApp = localAuth.routes()
 
       const state = 'test-state-onlogin'
@@ -313,7 +313,7 @@ describe('OAuth Routes', () => {
     it('onLogin throwing causes 500 and cleans up session', async () => {
       const onLogin = vi.fn().mockRejectedValue(new Error('hook boom'))
       const localAdapter = new MemoryAdapter()
-      const localAuth = createBezzie({ ...config, adapter: localAdapter, onLogin })
+      const localAuth = createBezzie({ ...config, adapter: () => localAdapter, onLogin })
       const localApp = localAuth.routes()
 
       const state = 'test-state-onlogin-fail'
@@ -516,7 +516,7 @@ describe('OAuth Routes', () => {
 
       const onLogout = vi.fn()
       const localAdapter = new MemoryAdapter()
-      const localAuth = createBezzie({ ...config, adapter: localAdapter, onLogout })
+      const localAuth = createBezzie({ ...config, adapter: () => localAdapter, onLogout })
       const localApp = localAuth.routes()
 
       const sessionId = 'logout-hook-session'
@@ -559,7 +559,7 @@ describe('OAuth Routes', () => {
       const onLogout = vi.fn().mockRejectedValue(hookErr)
       const onError = vi.fn()
       const localAdapter = new MemoryAdapter()
-      const localAuth = createBezzie({ ...config, adapter: localAdapter, onLogout, onError })
+      const localAuth = createBezzie({ ...config, adapter: () => localAdapter, onLogout, onError })
       const localApp = localAuth.routes()
 
       const sessionId = 'logout-err-session'

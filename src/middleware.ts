@@ -3,7 +3,7 @@ import { getCookie } from 'hono/cookie'
 import * as oauth from 'oauth4webapi'
 import { getAuthorizationServer, type DiscoveryCache } from './discovery'
 import type { Session } from './session'
-import type { BezzieConfig } from './index'
+import type { ResolvedBezzieConfig } from './index'
 
 /**
  * Hono context variables provided by Bezzie middleware.
@@ -88,7 +88,7 @@ type AuthResult<TUser extends Record<string, unknown> = Record<string, unknown>>
 
 async function authenticate<TUser extends Record<string, unknown> = Record<string, unknown>>(
   c: Context,
-  config: BezzieConfig<TUser>,
+  config: ResolvedBezzieConfig<TUser>,
   cache: DiscoveryCache
 ): Promise<AuthResult<TUser>> {
   const sessionStore = config.adapter
@@ -210,7 +210,7 @@ async function authenticate<TUser extends Record<string, unknown> = Record<strin
 }
 
 export function middleware<TUser extends Record<string, unknown> = Record<string, unknown>>(
-  config: BezzieConfig<TUser>,
+  config: ResolvedBezzieConfig<TUser>,
   cache: DiscoveryCache
 ): MiddlewareHandler<{ Variables: AuthenticatedVariables<TUser> }> {
   return async (c, next) => {
@@ -237,7 +237,7 @@ export function middleware<TUser extends Record<string, unknown> = Record<string
  * Middleware that sets user context if a session exists but always calls next().
  */
 export function optionalMiddleware<TUser extends Record<string, unknown> = Record<string, unknown>>(
-  config: BezzieConfig<TUser>,
+  config: ResolvedBezzieConfig<TUser>,
   cache: DiscoveryCache
 ): MiddlewareHandler<{ Variables: OptionalVariables<TUser> }> {
   return async (c, next) => {

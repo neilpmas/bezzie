@@ -1,5 +1,5 @@
 import { Session } from '../session'
-import { SessionAdapter, PKCEState } from './types'
+import { SessionAdapter, SessionAdapterFactory, PKCEState } from './types'
 
 export interface RedisClient {
   get(key: string): Promise<string | null>
@@ -29,4 +29,12 @@ export class RedisAdapter<TUser extends Record<string, unknown> = Record<string,
   async delete(sessionId: string): Promise<void> {
     await this.redis.del(sessionId)
   }
+}
+
+/**
+ * Creates a Redis-backed session adapter factory.
+ */
+export function redisAdapter(client: RedisClient): SessionAdapterFactory {
+  return <TUser extends Record<string, unknown> = Record<string, unknown>>(): SessionAdapter<TUser> =>
+    new RedisAdapter<TUser>(client)
 }

@@ -57,3 +57,12 @@ export interface SessionAdapter<TUser extends Record<string, unknown> = Record<s
    */
   delete(sessionId: string): Promise<void>
 }
+
+/**
+ * Factory function that produces a {@link SessionAdapter} for a given `TUser`.
+ *
+ * Consumers construct adapters via the factory form (e.g. `memoryAdapter()`,
+ * `cloudflareKVAdapter(env.SESSION_KV)`) so `TUser` is inferred from
+ * `createBezzie<TUser>(...)` rather than needing to be specified twice.
+ */
+export type SessionAdapterFactory = <TUser extends Record<string, unknown> = Record<string, unknown>>() => SessionAdapter<TUser>

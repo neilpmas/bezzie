@@ -30,7 +30,7 @@ describe('Middleware', () => {
       clientId: 'test-client-id',
       clientSecret: 'test-client-secret',
       audience: 'https://api.test.com',
-      adapter,
+      adapter: () => adapter,
       baseUrl: 'https://app.test.com',
     }
 
@@ -242,7 +242,7 @@ describe('Middleware', () => {
       clientId: 'test-client-id',
       clientSecret: 'test-client-secret',
       // no audience
-      adapter,
+      adapter: () => adapter,
       baseUrl: 'https://app.test.com',
     }
     const authNoAudience = createBezzie(configNoAudience)
@@ -277,7 +277,7 @@ describe('Middleware', () => {
       clientId: 'test-client-id',
       clientSecret: 'test-client-secret',
       audience: 'https://api.test.com',
-      adapter,
+      adapter: () => adapter,
       baseUrl: 'https://app.test.com',
       validateAccessToken: false,
     }
@@ -406,7 +406,7 @@ describe('Middleware', () => {
       issuer,
       clientId: 'test-client-id',
       clientSecret: 'test-client-secret',
-      adapter,
+      adapter: () => adapter,
       baseUrl: 'https://app.test.com',
       loginPath: '/custom/login',
     }
@@ -449,7 +449,7 @@ describe('Middleware', () => {
       clientId: 'client1',
       clientSecret: 'secret1',
       baseUrl: 'https://app1.example.com',
-      adapter: adapter1,
+      adapter: () => adapter1,
     })
 
     const auth2 = createBezzie({
@@ -457,7 +457,7 @@ describe('Middleware', () => {
       clientId: 'client2',
       clientSecret: 'secret2',
       baseUrl: 'https://app2.example.com',
-      adapter: adapter1,
+      adapter: () => adapter1,
     })
 
     const app1 = new Hono()
@@ -504,7 +504,7 @@ describe('Middleware', () => {
         clientId: 'test-client-id',
         clientSecret: 'test-client-secret',
         audience: 'https://api.test.com',
-        adapter: localAdapter,
+        adapter: () => localAdapter,
         baseUrl: 'https://app.test.com',
         onRefresh,
       })
@@ -559,7 +559,7 @@ describe('Middleware', () => {
         clientId: 'test-client-id',
         clientSecret: 'test-client-secret',
         audience: 'https://api.test.com',
-        adapter: localAdapter,
+        adapter: () => localAdapter,
         baseUrl: 'https://app.test.com',
         onRefresh,
         onError,

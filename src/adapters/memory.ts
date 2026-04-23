@@ -1,5 +1,5 @@
 import { Session } from '../session'
-import { SessionAdapter, PKCEState } from './types'
+import { SessionAdapter, SessionAdapterFactory, PKCEState } from './types'
 
 interface MemorySession<TUser extends Record<string, unknown> = Record<string, unknown>> {
   session: Session<TUser> | PKCEState
@@ -62,4 +62,12 @@ export class MemoryAdapter<TUser extends Record<string, unknown> = Record<string
   async delete(sessionId: string): Promise<void> {
     this.store.delete(sessionId)
   }
+}
+
+/**
+ * Creates an in-memory session adapter factory. Useful for tests and local dev.
+ */
+export function memoryAdapter(): SessionAdapterFactory {
+  return <TUser extends Record<string, unknown> = Record<string, unknown>>(): SessionAdapter<TUser> =>
+    new MemoryAdapter<TUser>()
 }
