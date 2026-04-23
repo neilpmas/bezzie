@@ -12,7 +12,7 @@ export function authRoutes<TUser extends Record<string, unknown> = Record<string
   const router = new Hono()
   const sessionStore = config.adapter
 
-  router.get('/login', async (c) => {
+  router.get(config.routes?.login ?? '/login', async (c) => {
     const code_verifier = oauth.generateRandomCodeVerifier()
     const code_challenge = await oauth.calculatePKCECodeChallenge(code_verifier)
     const state = oauth.generateRandomState()
@@ -44,7 +44,7 @@ export function authRoutes<TUser extends Record<string, unknown> = Record<string
     const authorizationUrl = new URL(as.authorization_endpoint)
     authorizationUrl.searchParams.set('client_id', config.clientId)
     authorizationUrl.searchParams.set('response_type', 'code')
-    authorizationUrl.searchParams.set('redirect_uri', `${config.baseUrl}/auth/callback`)
+    authorizationUrl.searchParams.set('redirect_uri', `${config.baseUrl}${config.routes?.callback ?? '/auth/callback'}`)
     authorizationUrl.searchParams.set('scope', (config.scopes ?? ['openid', 'profile', 'email', 'offline_access']).join(' '))
     authorizationUrl.searchParams.set('state', state)
     authorizationUrl.searchParams.set('code_challenge', code_challenge)
@@ -57,7 +57,7 @@ export function authRoutes<TUser extends Record<string, unknown> = Record<string
     return c.redirect(authorizationUrl.toString())
   })
 
-  router.get('/callback', async (c) => {
+  router.get(config.routes?.callback ?? '/callback', async (c) => {
     const error = c.req.query('error')
     if (error) {
       const ERROR_MESSAGES: Record<string, string> = {
@@ -118,7 +118,7 @@ export function authRoutes<TUser extends Record<string, unknown> = Record<string
       client,
       clientAuth,
       callbackParams,
-      `${config.baseUrl}/auth/callback`,
+      `${config.baseUrl}${config.routes?.callback ?? '/auth/callback'}`,
       codeVerifier,
       { signal: AbortSignal.timeout(5000) },
     )
@@ -219,7 +219,7 @@ export function authRoutes<TUser extends Record<string, unknown> = Record<string
     return c.redirect('/')
   })
 
-  router.post('/logout', async (c) => {
+  router.post(config.routes?.logout ?? '/logout', async (c) => {
     const sessionId = getCookie(c, config.cookieName ?? '__Host-session')
     let idToken: string | undefined
     let refreshToken: string | undefined
