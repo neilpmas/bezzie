@@ -221,7 +221,7 @@ export function middleware<TUser extends Record<string, unknown> = Record<string
     }
 
     if (result.type === 'expired') {
-      return c.redirect(config.loginPath ?? '/auth/login')
+      return c.redirect(config.loginPath ?? config.routes?.login ?? '/auth/login')
     }
 
     // Attach the user and accessToken to Hono context

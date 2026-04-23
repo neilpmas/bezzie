@@ -54,7 +54,35 @@ export interface BezzieConfig<TUser extends Record<string, unknown> = Record<str
   baseUrl: string
 
   /**
+   * Custom route paths for Bezzie's internal auth routes.
+   *
+   * Note: the `callback` path used for the OAuth redirect URI defaults to
+   * `/auth/callback` to match the common pattern of mounting the Bezzie
+   * router under `/auth`.
+   */
+  routes?: {
+    /**
+     * Path for the login route.
+     * @default '/login'
+     */
+    login?: string
+
+    /**
+     * Path for the callback route.
+     * @default '/callback'
+     */
+    callback?: string
+
+    /**
+     * Path for the logout route.
+     * @default '/logout'
+     */
+    logout?: string
+  }
+
+  /**
    * Optional path to the login route (defaults to /auth/login).
+   * @deprecated Use `routes.login` instead.
    */
   loginPath?: string
 
