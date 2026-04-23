@@ -21,6 +21,12 @@ export interface PKCEState {
    * Used to prevent login-CSRF attacks (S4).
    */
   csrfToken: string
+  /**
+   * OIDC `nonce` value. Generated at `/login`, passed in the authorization
+   * request, and verified against the `nonce` claim of the returned ID token
+   * at `/callback` to prevent ID token replay attacks (S8).
+   */
+  nonce: string
 }
 
 /**
