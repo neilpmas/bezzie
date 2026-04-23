@@ -41,4 +41,14 @@ export interface Session<TUser extends Record<string, unknown> = Record<string, 
   } & TUser
 }
 
+/**
+ * Alias for {@link Session} intended for consumers that want to type the
+ * shape of session data as it is persisted by a {@link SessionAdapter}.
+ *
+ * `Session<TUser>` describes the runtime session object. `StoredSession<TUser>`
+ * is the same shape — the alias exists so callers can write intent-revealing
+ * types like `adapter.get(id) as StoredSession<MyUser> | null`.
+ */
+export type StoredSession<TUser extends Record<string, unknown> = Record<string, unknown>> = Session<TUser>
+
 export * from './adapters'

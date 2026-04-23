@@ -137,6 +137,10 @@ async function authenticate<TUser extends Record<string, unknown> = Record<strin
         },
       })
 
+      // S10: validateJwtAccessToken verifies the JWT signature via JWKS and
+      // asserts the standard claims — `iss` matches the authorization server,
+      // `aud` matches `config.audience` (passed as the third argument, the
+      // expectedAudience parameter), and `exp`/`nbf`/`iat` are within bounds.
       await oauth.validateJwtAccessToken(as, mockReq, config.audience, { [oauth.jwksCache]: cache.jwksCache })
     } catch (err) {
       // 9. If JWT invalid → fallback to opaque token (pass through)

@@ -17,11 +17,14 @@ export function authRoutes<TUser extends Record<string, unknown> = Record<string
     const code_challenge = await oauth.calculatePKCECodeChallenge(code_verifier)
     const state = oauth.generateRandomState()
     const csrfToken = oauth.generateRandomState()
+    // S8: OIDC nonce — bound to this login flow, verified in /callback against
+    // the `nonce` claim of the returned ID token to prevent replay.
+    const nonce = oauth.generateRandomState()
 
     const returnTo = c.req.query('returnTo')
 
-    // Store state, codeVerifier and csrfToken in adapter
-    await config.adapter.set(`pkce:${state}`, { _type: 'pkce', codeVerifier: code_verifier, returnTo, csrfToken } as PKCEState, config.pkceStateTtlSeconds ?? 600) // 10 minutes
+    // Store state, codeVerifier, csrfToken, and nonce in adapter
+    await config.adapter.set(`pkce:${state}`, { _type: 'pkce', codeVerifier: code_verifier, returnTo, csrfToken, nonce } as PKCEState, config.pkceStateTtlSeconds ?? 600) // 10 minutes
 
     // Bind the PKCE state to the user's browser session via a short-lived cookie
     // to prevent login-CSRF (S4).
@@ -46,6 +49,7 @@ export function authRoutes<TUser extends Record<string, unknown> = Record<string
     authorizationUrl.searchParams.set('state', state)
     authorizationUrl.searchParams.set('code_challenge', code_challenge)
     authorizationUrl.searchParams.set('code_challenge_method', 'S256')
+    authorizationUrl.searchParams.set('nonce', nonce)
     if (config.audience) {
       authorizationUrl.searchParams.set('audience', config.audience)
     }
@@ -74,7 +78,7 @@ export function authRoutes<TUser extends Record<string, unknown> = Record<string
     if (!stored) {
       return c.text('Invalid or expired state', 400)
     }
-    const { codeVerifier, returnTo, csrfToken: storedCsrfToken } = stored
+    const { codeVerifier, returnTo, csrfToken: storedCsrfToken, nonce: storedNonce } = stored
 
     if (!codeVerifier || codeVerifier.length < 43) {
       return c.text('Invalid PKCE state', 400)
@@ -121,19 +125,26 @@ export function authRoutes<TUser extends Record<string, unknown> = Record<string
 
     let result: oauth.TokenEndpointResponse
     try {
-      result = await oauth.processAuthorizationCodeResponse(as, client, response)
+      // S8: pass expectedNonce so oauth4webapi verifies the ID token `nonce`
+      // claim matches the value we sent in the authorization request.
+      result = await oauth.processAuthorizationCodeResponse(as, client, response, {
+        expectedNonce: storedNonce,
+      })
     } catch (err) {
       if (err instanceof oauth.ResponseBodyError) {
+        console.error('Bezzie: OAuth 2.0 token exchange error:', err)
         return c.text('OAuth 2.0 error', 400)
       }
-      throw err
+      console.error('Bezzie: processAuthorizationCodeResponse failed (possible nonce mismatch):', err)
+      return c.text('Invalid ID token', 400)
     }
 
     const { access_token, refresh_token, expires_in, id_token } = result
     const claims = oauth.getValidatedIdTokenClaims(result)
 
     if (!claims) {
-      return c.json({ error: 'id_token missing from token response' }, 500)
+      console.error('Bezzie: id_token missing from token response')
+      return c.text('Authentication failed', 500)
     }
 
     if (!refresh_token) {
@@ -185,12 +196,32 @@ export function authRoutes<TUser extends Record<string, unknown> = Record<string
   router.post('/logout', async (c) => {
     const sessionId = getCookie(c, config.cookieName ?? '__Host-session')
     let idToken: string | undefined
+    let refreshToken: string | undefined
     if (sessionId) {
       const session = await sessionStore.get(`session:${sessionId}`)
       if (session && session._type === 'session') {
         idToken = (session as Session<TUser>).idToken
+        refreshToken = (session as Session<TUser>).refreshToken
       }
       await sessionStore.delete(`session:${sessionId}`)
+    }
+
+    const as = await getAuthorizationServer(config, cache)
+
+    // S12: best-effort revoke the refresh token at the IdP so the tokens are
+    // invalidated server-side, not just locally. Wrapped in try/catch — a
+    // revocation failure must not block the logout redirect.
+    if (refreshToken && as.revocation_endpoint) {
+      try {
+        const client: oauth.Client = { client_id: config.clientId }
+        const clientAuth = oauth.ClientSecretPost(config.clientSecret)
+        const response = await oauth.revocationRequest(as, client, clientAuth, refreshToken, {
+          signal: AbortSignal.timeout(5000),
+        })
+        await oauth.processRevocationResponse(response)
+      } catch (err) {
+        console.error('Bezzie: token revocation failed (continuing with logout):', err)
+      }
     }
 
     deleteCookie(c, config.cookieName ?? '__Host-session', {
@@ -199,8 +230,6 @@ export function authRoutes<TUser extends Record<string, unknown> = Record<string
       httpOnly: true,
       sameSite: 'Strict',
     })
-
-    const as = await getAuthorizationServer(config, cache)
 
     let logoutUrl: URL
     if (config.providerOverrides?.logoutUrl) {

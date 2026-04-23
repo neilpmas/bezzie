@@ -10,11 +10,38 @@ export class MemoryAdapter<TUser extends Record<string, unknown> = Record<string
   implements SessionAdapter<TUser>
 {
   private store = new Map<string, MemorySession<TUser>>()
+  private lastCleanup = 0
+  private static readonly CLEANUP_INTERVAL_MS = 60_000
+
+  /**
+   * Evicts all entries whose TTL has expired.
+   *
+   * Workers runtimes don't support long-lived timers (`setInterval`), so rather
+   * than scheduling cleanup we trigger it opportunistically from `get()` at
+   * most once every `CLEANUP_INTERVAL_MS`. This bounds memory growth for
+   * long-running processes (e.g. local dev, tests) without adding overhead to
+   * every read.
+   */
+  cleanup(): void {
+    const now = Date.now()
+    for (const [id, entry] of this.store) {
+      if (now > entry.expiresAt) {
+        this.store.delete(id)
+      }
+    }
+    this.lastCleanup = now
+  }
 
   async get(sessionId: string): Promise<Session<TUser> | PKCEState | null> {
+    // Proactive TTL eviction (C6): run at most once per CLEANUP_INTERVAL_MS.
+    const now = Date.now()
+    if (now - this.lastCleanup > MemoryAdapter.CLEANUP_INTERVAL_MS) {
+      this.cleanup()
+    }
+
     const entry = this.store.get(sessionId)
     if (!entry) return null
-    if (Date.now() > entry.expiresAt) {
+    if (now > entry.expiresAt) {
       this.store.delete(sessionId)
       return null
     }

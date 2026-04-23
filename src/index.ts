@@ -84,7 +84,22 @@ export interface BezzieConfig<TUser extends Record<string, unknown> = Record<str
 
   /**
    * OAuth scopes to request.
+   *
+   * Providing a value **replaces** the default list entirely — it does not
+   * extend it. If you set `scopes`, you must explicitly include every scope
+   * you need.
+   *
+   * In particular, include `'offline_access'` if you want Bezzie to be able
+   * to refresh access tokens; without it the provider will not issue a
+   * refresh token and sessions will terminate when the access token expires.
+   *
    * @default ['openid', 'profile', 'email', 'offline_access']
+   * @example
+   * // Good — includes offline_access for refresh support:
+   * scopes: ['openid', 'profile', 'email', 'offline_access', 'read:things']
+   *
+   * // Bad — no refresh token will be issued:
+   * scopes: ['openid', 'read:things']
    */
   scopes?: string[]
 
@@ -200,5 +215,5 @@ function createBezzie<TUser extends Record<string, unknown> = Record<string, unk
 
 export { createBezzie, cloudflareKVAdapter, middleware, optionalMiddleware }
 export type { Variables, AuthenticatedVariables, OptionalVariables } from './middleware'
-export type { SessionAdapter, PKCEState, Session } from './session'
+export type { SessionAdapter, PKCEState, Session, StoredSession } from './session'
 export { CloudflareKVAdapter, RedisAdapter, MemoryAdapter } from './session'

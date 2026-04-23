@@ -1,12 +1,12 @@
 # Bezzie
 
-**Bezzie** — your BFF's BFF. Handles the Backend for Frontend OAuth pattern so you don't have to.
-
 [![npm downloads](https://img.shields.io/npm/dw/bezzie)](https://www.npmjs.com/package/bezzie)
 
-A BFF (Backend for Frontend) OAuth 2.0 auth library for Cloudflare Workers.
+> Bezzie is a BFF (Backend for Frontend) OAuth 2.0 library for Cloudflare Workers. It implements [BCP212](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-browser-based-apps) — your frontend never sees a JWT.
 
-Implements the [OAuth 2.0 for Browser-Based Apps (BCP212)](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-browser-based-apps) pattern — JWTs never touch the browser. The BFF owns the OAuth flow and issues a session cookie to the frontend instead.
+**Bezzie** — your BFF's BFF. Handles the Backend for Frontend OAuth pattern so you don't have to.
+
+The BFF owns the OAuth flow and issues a session cookie to the frontend instead of handing tokens to the browser.
 
 ```
 npm install bezzie
