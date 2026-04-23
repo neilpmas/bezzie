@@ -186,6 +186,32 @@ export function authRoutes<TUser extends Record<string, unknown> = Record<string
       maxAge: config.sessionTtlSeconds ?? 30 * 24 * 60 * 60, // 30 days, matches KV session TTL
     })
 
+    if (config.onLogin) {
+      try {
+        await config.onLogin({
+          user: session.user,
+          sessionId,
+          tokens: { accessToken: access_token, expiresAt: session.expiresAt },
+          isNewSession: true,
+          c,
+        })
+      } catch (err) {
+        // onLogin errors bubble — abort login, clean up session
+        await sessionStore.delete(`session:${sessionId}`)
+        deleteCookie(c, config.cookieName ?? '__Host-session', {
+          path: '/',
+          secure: true,
+          httpOnly: true,
+          sameSite: 'Strict',
+        })
+        console.error(
+          'Bezzie: onLogin hook threw, aborting login:',
+          err instanceof Error ? err.message : String(err)
+        )
+        return c.text('Login failed', 500)
+      }
+    }
+
     if (returnTo && returnTo.startsWith('/') && !returnTo.startsWith('//')) {
       return c.redirect(returnTo)
     }
@@ -197,13 +223,24 @@ export function authRoutes<TUser extends Record<string, unknown> = Record<string
     const sessionId = getCookie(c, config.cookieName ?? '__Host-session')
     let idToken: string | undefined
     let refreshToken: string | undefined
+    let loggedOutUser: Session<TUser>['user'] | undefined
     if (sessionId) {
       const session = await sessionStore.get(`session:${sessionId}`)
       if (session && session._type === 'session') {
         idToken = (session as Session<TUser>).idToken
         refreshToken = (session as Session<TUser>).refreshToken
+        loggedOutUser = (session as Session<TUser>).user
       }
       await sessionStore.delete(`session:${sessionId}`)
+
+      if (config.onLogout && loggedOutUser) {
+        try {
+          await config.onLogout({ user: loggedOutUser, sessionId, c })
+        } catch (err) {
+          const handler = config.onError ?? ((e: unknown) => console.error('Bezzie: onLogout hook threw:', e instanceof Error ? e.message : String(e)))
+          handler(err, { hook: 'onLogout', c })
+        }
+      }
     }
 
     const as = await getAuthorizationServer(config, cache)

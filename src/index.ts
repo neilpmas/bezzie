@@ -1,6 +1,15 @@
 import { Hono, type MiddlewareHandler } from 'hono'
 import { authRoutes } from './routes'
-import { middleware, optionalMiddleware, type AuthenticatedVariables, type OptionalVariables } from './middleware'
+import {
+  middleware,
+  optionalMiddleware,
+  type AuthenticatedVariables,
+  type OptionalVariables,
+  type LoginHookContext,
+  type RefreshHookContext,
+  type LogoutHookContext,
+  type HookErrorContext,
+} from './middleware'
 import { createDiscoveryCache, type DiscoveryCache } from './discovery'
 
 import { CloudflareKVAdapter, type SessionAdapter } from './session'
@@ -108,6 +117,31 @@ export interface BezzieConfig<TUser extends Record<string, unknown> = Record<str
    * @default 60
    */
   refreshBufferSeconds?: number
+
+  /**
+   * Called at the end of /callback after the session is created.
+   * Awaited. If it throws, the login is aborted and the partial session is deleted.
+   * Use c.executionCtx?.waitUntil() for non-critical background work.
+   */
+  onLogin?: (ctx: LoginHookContext<TUser>) => Promise<void> | void
+
+  /**
+   * Called in middleware after a successful token refresh.
+   * Awaited, but errors are caught and routed to onError — the request continues.
+   */
+  onRefresh?: (ctx: RefreshHookContext<TUser>) => Promise<void> | void
+
+  /**
+   * Called at /logout after the session is deleted.
+   * Awaited, but errors are caught and routed to onError — logout always succeeds.
+   */
+  onLogout?: (ctx: LogoutHookContext<TUser>) => Promise<void> | void
+
+  /**
+   * Called when a non-fatal hook throws (onRefresh, onLogout).
+   * Defaults to console.error. onLogin errors still bubble.
+   */
+  onError?: (err: unknown, ctx: HookErrorContext) => void
 }
 
 /**
@@ -214,6 +248,14 @@ function createBezzie<TUser extends Record<string, unknown> = Record<string, unk
 }
 
 export { createBezzie, cloudflareKVAdapter, middleware, optionalMiddleware }
-export type { Variables, AuthenticatedVariables, OptionalVariables } from './middleware'
+export type {
+  Variables,
+  AuthenticatedVariables,
+  OptionalVariables,
+  LoginHookContext,
+  RefreshHookContext,
+  LogoutHookContext,
+  HookErrorContext,
+} from './middleware'
 export type { SessionAdapter, PKCEState, Session, StoredSession } from './session'
 export { CloudflareKVAdapter, RedisAdapter, MemoryAdapter } from './session'
