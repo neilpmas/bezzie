@@ -33,7 +33,7 @@ export function authRoutes<TUser extends Record<string, unknown> = Record<string
     setCookie(c, '__Host-pkce-csrf', csrfToken, {
       httpOnly: true,
       secure: true,
-      sameSite: 'Strict',
+      sameSite: 'Lax', // Must be Lax — Strict blocks cross-site redirects from the IdP
       path: '/',
       maxAge: 600,
     })
