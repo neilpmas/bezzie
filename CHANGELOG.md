@@ -1,5 +1,34 @@
 # Changelog
 
+## [1.0.0](https://github.com/neilpmas/bezzie/compare/v0.2.2...v1.0.0) (2026-04-23)
+
+
+### ⚠ BREAKING CHANGES
+
+* BezzieConfig.adapter now takes SessionAdapterFactory instead of SessionAdapter<TUser>. Update: cloudflareKVAdapter(kv) — no change needed. new MemoryAdapter() → memoryAdapter(). new RedisAdapter(client) → redisAdapter(client).
+* providerHints, cloudflareKV, and Bezzie.cache are removed.
+
+### Features
+
+* add `routes` config option to customize internal auth route paths ([658e3d1](https://github.com/neilpmas/bezzie/commit/658e3d16c452095508b3c0fac1743da3b8c1596c))
+* add `routes` config option to customize internal auth route paths ([c0cb815](https://github.com/neilpmas/bezzie/commit/c0cb81551e1b1721990c274c3a3e06b6248627a9))
+* add lifecycle hooks — onLogin, onLogout, onRefresh, onError (A6) ([f25eb66](https://github.com/neilpmas/bezzie/commit/f25eb66709efc1410528d779b1650ccbd87e792b))
+* add lifecycle hooks — onLogin, onLogout, onRefresh, onError (A6) ([0d4b0af](https://github.com/neilpmas/bezzie/commit/0d4b0af5f91376cce296877165503edbd945cc50))
+* add mapClaims option for runtime claim validation (C3) ([1523e25](https://github.com/neilpmas/bezzie/commit/1523e257884771826dce359527b81db27ef686eb))
+* breaking API changes before v1.0.0 (A2, A3, A4, C10) ([a81d0a3](https://github.com/neilpmas/bezzie/commit/a81d0a339b11ed05f7ca2e89d96f105e7fc2514f))
+* typed error classes and adapter factory inference (C11, C4) ([06f3494](https://github.com/neilpmas/bezzie/commit/06f34941db3f238828869696f463acf22d5c731e))
+* Upstash docs, npm keywords, SECURITY.md, GitHub topics (A5, T1, T3, T5) ([08ec2e2](https://github.com/neilpmas/bezzie/commit/08ec2e21473e2d328a91b8622a5bb97c85acd403))
+
+
+### Bug Fixes
+
+* batch 2 review items (S8, S12, S10, S13, C6, C8, T2, C13) ([d88354d](https://github.com/neilpmas/bezzie/commit/d88354dd4300afd6b770d2e598c3fcfefec73389))
+* batch 2 review items (S8, S12, S10, S13, C6, C8, T2, C13) ([34fc6d5](https://github.com/neilpmas/bezzie/commit/34fc6d576f0810d5d826f2e17d343f1b1d25d34d))
+* final batch — providers typing, HTTP warning, docs (C1, T4, S6, … ([2111722](https://github.com/neilpmas/bezzie/commit/211172275a0ab8a35ced2ac9e988821808cfe47c))
+* final batch — providers typing, HTTP warning, docs (C1, T4, S6, T6, S15, S2) ([febd24f](https://github.com/neilpmas/bezzie/commit/febd24f513e6d80a735881b2bf16a3ca179dc88f))
+* **security:** S5 log JWT failures, S3 PKCE guard, C12 fetch timeouts, S14 session: prefix, S11 session fixation ([8e5dd14](https://github.com/neilpmas/bezzie/commit/8e5dd1443126037846fe47adae42db51e08f6834))
+* **security:** S5 log JWT failures, S3 PKCE guard, C12 fetch timeouts… ([a40de3f](https://github.com/neilpmas/bezzie/commit/a40de3ffd4921d822b332f5e75f9479794f6d789))
+
 ## [0.2.2](https://github.com/neilpmas/bezzie/compare/v0.2.1...v0.2.2) (2026-04-23)
 
 
