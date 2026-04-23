@@ -360,6 +360,167 @@ describe('OAuth Routes', () => {
       // by trying to fetch by scanning known keys — skipped; main assertions above suffice.
     })
 
+    it('mapClaims not provided — session.user matches raw claims (unchanged behaviour)', async () => {
+      const localAdapter = new MemoryAdapter()
+      const localAuth = createBezzie({ ...config, adapter: () => localAdapter })
+      const localApp = localAuth.routes()
+
+      const state = 'test-state-mapclaims-none'
+      const code = 'test-code'
+      const codeVerifier = 'test-verifier-must-be-at-least-43-chars-long-aaa'
+      const csrfToken = 'test-csrf-mapclaims-none'
+
+      await localAdapter.set(
+        `pkce:${state}`,
+        { _type: 'pkce', codeVerifier, csrfToken } as PKCEState,
+        600
+      )
+
+      const mockAs = { issuer: config.issuer }
+      vi.mocked(oauth.discoveryRequest).mockResolvedValue({} as unknown as Response)
+      vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue(mockAs as oauth.AuthorizationServer)
+      vi.mocked(oauth.authorizationCodeGrantRequest).mockResolvedValue({} as unknown as Response)
+      vi.mocked(oauth.processAuthorizationCodeResponse).mockResolvedValue({
+        access_token: 'mc-access',
+        refresh_token: 'mc-refresh',
+        expires_in: 3600,
+        id_token: 'mc-id',
+      } as oauth.TokenEndpointResponse)
+      vi.mocked(oauth.getValidatedIdTokenClaims).mockReturnValue({
+        sub: 'mc-user',
+        email: 'mc@example.com',
+        custom: 'raw',
+      } as unknown as oauth.IDToken)
+
+      const res = await localApp.request(`/callback?state=${state}&code=${code}`, {
+        headers: { Cookie: `__Host-pkce-csrf=${csrfToken}` },
+      })
+
+      expect(res.status).toBe(302)
+      const cookie = res.headers.get('Set-Cookie')!
+      const sessionId = cookie.match(/__Host-session=([^;]+)/)![1]
+      const session = (await localAdapter.get(`session:${sessionId}`)) as Session
+      expect(session.user.sub).toBe('mc-user')
+      expect(session.user.email).toBe('mc@example.com')
+      expect((session.user as Record<string, unknown>).custom).toBe('raw')
+    })
+
+    it('mapClaims provided and succeeds — session.user contains the mapped value', async () => {
+      interface MyUser extends Record<string, unknown> {
+        sub: string
+        displayName: string
+      }
+      const mapClaims = vi.fn((claims: unknown) => {
+        const c = claims as { sub: string; name?: string }
+        return { sub: c.sub, displayName: c.name ?? 'anon' } as MyUser
+      })
+      const localAdapter = new MemoryAdapter()
+      const localAuth = createBezzie<MyUser>({
+        ...config,
+        adapter: () => localAdapter,
+        mapClaims,
+      })
+      const localApp = localAuth.routes()
+
+      const state = 'test-state-mapclaims-ok'
+      const code = 'test-code'
+      const codeVerifier = 'test-verifier-must-be-at-least-43-chars-long-aaa'
+      const csrfToken = 'test-csrf-mapclaims-ok'
+
+      await localAdapter.set(
+        `pkce:${state}`,
+        { _type: 'pkce', codeVerifier, csrfToken } as PKCEState,
+        600
+      )
+
+      const mockAs = { issuer: config.issuer }
+      vi.mocked(oauth.discoveryRequest).mockResolvedValue({} as unknown as Response)
+      vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue(mockAs as oauth.AuthorizationServer)
+      vi.mocked(oauth.authorizationCodeGrantRequest).mockResolvedValue({} as unknown as Response)
+      vi.mocked(oauth.processAuthorizationCodeResponse).mockResolvedValue({
+        access_token: 'mc-access',
+        refresh_token: 'mc-refresh',
+        expires_in: 3600,
+        id_token: 'mc-id',
+      } as oauth.TokenEndpointResponse)
+      vi.mocked(oauth.getValidatedIdTokenClaims).mockReturnValue({
+        sub: 'mapped-user',
+        email: 'mapped@example.com',
+        name: 'Alice',
+      } as unknown as oauth.IDToken)
+
+      const res = await localApp.request(`/callback?state=${state}&code=${code}`, {
+        headers: { Cookie: `__Host-pkce-csrf=${csrfToken}` },
+      })
+
+      expect(res.status).toBe(302)
+      expect(mapClaims).toHaveBeenCalledTimes(1)
+
+      const cookie = res.headers.get('Set-Cookie')!
+      const sessionId = cookie.match(/__Host-session=([^;]+)/)![1]
+      const session = (await localAdapter.get(`session:${sessionId}`)) as Session<MyUser>
+      expect(session.user.sub).toBe('mapped-user')
+      expect(session.user.email).toBe('mapped@example.com')
+      expect(session.user.displayName).toBe('Alice')
+    })
+
+    it('mapClaims provided and throws — returns 500, session not stored, cookie not set', async () => {
+      const mapClaims = vi.fn(() => {
+        throw new Error('invalid claims')
+      })
+      const localAdapter = new MemoryAdapter()
+      const localAuth = createBezzie({
+        ...config,
+        adapter: () => localAdapter,
+        mapClaims,
+      })
+      const localApp = localAuth.routes()
+
+      const state = 'test-state-mapclaims-throw'
+      const code = 'test-code'
+      const codeVerifier = 'test-verifier-must-be-at-least-43-chars-long-aaa'
+      const csrfToken = 'test-csrf-mapclaims-throw'
+
+      await localAdapter.set(
+        `pkce:${state}`,
+        { _type: 'pkce', codeVerifier, csrfToken } as PKCEState,
+        600
+      )
+
+      const mockAs = { issuer: config.issuer }
+      vi.mocked(oauth.discoveryRequest).mockResolvedValue({} as unknown as Response)
+      vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue(mockAs as oauth.AuthorizationServer)
+      vi.mocked(oauth.authorizationCodeGrantRequest).mockResolvedValue({} as unknown as Response)
+      vi.mocked(oauth.processAuthorizationCodeResponse).mockResolvedValue({
+        access_token: 'tok',
+        refresh_token: 'r',
+        expires_in: 3600,
+        id_token: 'id',
+      } as oauth.TokenEndpointResponse)
+      vi.mocked(oauth.getValidatedIdTokenClaims).mockReturnValue({
+        sub: 'throw-user',
+      } as unknown as oauth.IDToken)
+
+      const res = await localApp.request(`/callback?state=${state}&code=${code}`, {
+        headers: { Cookie: `__Host-pkce-csrf=${csrfToken}` },
+      })
+
+      expect(res.status).toBe(500)
+      expect(await res.text()).toBe('Login failed')
+      expect(mapClaims).toHaveBeenCalledTimes(1)
+
+      // No Set-Cookie should set a valid session cookie (Max-Age should be 0 if present)
+      const setCookie = res.headers.get('Set-Cookie') ?? ''
+      if (setCookie.includes('__Host-session=')) {
+        expect(setCookie).toContain('Max-Age=0')
+      }
+
+      // No session keys should exist in the adapter
+      const store = (localAdapter as unknown as { store: Map<string, unknown> }).store
+      const sessionKeys = [...store.keys()].filter((k) => k.startsWith('session:'))
+      expect(sessionKeys).toHaveLength(0)
+    })
+
     it('returns 400 if the __Host-pkce-csrf cookie is missing (login-CSRF protection)', async () => {
       const state = 'test-state-no-cookie'
       const code = 'test-code'
