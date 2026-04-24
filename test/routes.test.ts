@@ -98,6 +98,26 @@ describe('OAuth Routes', () => {
       const stored = (await adapter.get(`pkce:${state}`)) as PKCEState
       expect(stored.returnTo).toBe('/dashboard')
     })
+
+    it('sets CSRF cookie with SameSite=Lax', async () => {
+      ;(auth as unknown as { cache: DiscoveryCache }).cache.cachedAS = null
+      ;(auth as unknown as { cache: DiscoveryCache }).cache.cacheExpiresAt = 0
+      const mockAs = {
+        issuer: config.issuer,
+        authorization_endpoint: `${config.issuer}/authorize`,
+      }
+      vi.mocked(oauth.discoveryRequest).mockResolvedValue({} as unknown as Response)
+      vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue(
+        mockAs as oauth.AuthorizationServer
+      )
+
+      const res = await app.request('/login')
+      // noinspection JSVoidFunctionReturnValueUsed
+      const csrfCookie = res.headers.get('Set-Cookie')
+      expect(csrfCookie).toContain('__Host-pkce-csrf=')
+      expect(csrfCookie).toContain('SameSite=Lax')
+      expect(csrfCookie).not.toContain('SameSite=Strict')
+    })
   })
 
   describe('GET /callback', () => {
@@ -123,6 +143,41 @@ describe('OAuth Routes', () => {
       const res = await app.request('/callback?state=invalid&code=123')
       expect(res.status).toBe(400)
       expect(await res.text()).toBe('Invalid or expired state')
+    })
+
+    it('returns 400 when CSRF cookie is missing', async () => {
+      const state = 'csrf-missing-state'
+      const csrfToken = 'csrf-missing-token'
+      const codeVerifier = 'test-verifier-must-be-at-least-43-chars-long-aaa'
+
+      await adapter.set(
+        `pkce:${state}`,
+        { _type: 'pkce', codeVerifier, csrfToken } as PKCEState,
+        600
+      )
+
+      // No Cookie header — simulates the IdP redirect dropping a SameSite=Strict cookie
+      const res = await app.request(`/callback?state=${state}&code=abc`)
+      expect(res.status).toBe(400)
+      expect(await res.text()).toBe('Invalid CSRF token')
+    })
+
+    it('returns 400 when CSRF cookie does not match stored token', async () => {
+      const state = 'csrf-mismatch-state'
+      const csrfToken = 'real-csrf-token'
+      const codeVerifier = 'test-verifier-must-be-at-least-43-chars-long-aaa'
+
+      await adapter.set(
+        `pkce:${state}`,
+        { _type: 'pkce', codeVerifier, csrfToken } as PKCEState,
+        600
+      )
+
+      const res = await app.request(`/callback?state=${state}&code=abc`, {
+        headers: { Cookie: `__Host-pkce-csrf=wrong-token` },
+      })
+      expect(res.status).toBe(400)
+      expect(await res.text()).toBe('Invalid CSRF token')
     })
 
     it('with valid state exchanges code, stores session, sets cookie, redirects', async () => {
@@ -163,6 +218,7 @@ describe('OAuth Routes', () => {
       expect(res.headers.get('Location')).toBe('/')
 
       // Check cookie
+      // noinspection JSVoidFunctionReturnValueUsed
       const cookie = res.headers.get('Set-Cookie')
       expect(cookie).toContain('__Host-session=')
       expect(cookie).toContain('HttpOnly')
@@ -208,6 +264,7 @@ describe('OAuth Routes', () => {
         expires_in: 3600,
         id_token: 'mock-id-token',
       } as oauth.TokenEndpointResponse)
+      // noinspection JSVoidFunctionReturnValueUsed
       vi.mocked(oauth.getValidatedIdTokenClaims).mockReturnValue({
         sub: 'user-123',
       } as unknown as oauth.IDToken)
@@ -290,6 +347,7 @@ describe('OAuth Routes', () => {
         expires_in: 3600,
         id_token: 'login-id-token',
       } as oauth.TokenEndpointResponse)
+      // noinspection JSVoidFunctionReturnValueUsed
       vi.mocked(oauth.getValidatedIdTokenClaims).mockReturnValue({
         sub: 'user-login',
         email: 'login@example.com',
@@ -410,6 +468,7 @@ describe('OAuth Routes', () => {
         sub: string
         displayName: string
       }
+      // noinspection JSVoidFunctionReturnValueUsed
       const mapClaims = vi.fn((claims: unknown) => {
         const c = claims as { sub: string; name?: string }
         return { sub: c.sub, displayName: c.name ?? 'anon' } as MyUser
@@ -497,10 +556,12 @@ describe('OAuth Routes', () => {
         expires_in: 3600,
         id_token: 'id',
       } as oauth.TokenEndpointResponse)
+      // noinspection JSVoidFunctionReturnValueUsed
       vi.mocked(oauth.getValidatedIdTokenClaims).mockReturnValue({
         sub: 'throw-user',
       } as unknown as oauth.IDToken)
 
+      // noinspection JSVoidFunctionReturnValueUsed
       const res = await localApp.request(`/callback?state=${state}&code=${code}`, {
         headers: { Cookie: `__Host-pkce-csrf=${csrfToken}` },
       })
@@ -608,10 +669,12 @@ describe('OAuth Routes', () => {
         end_session_endpoint: `${config.issuer}/oidc/logout`,
       }
       vi.mocked(oauth.discoveryRequest).mockResolvedValue({} as unknown as Response)
+      // noinspection JSVoidFunctionReturnValueUsed
       vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue(
         mockAs as oauth.AuthorizationServer
       )
 
+      // noinspection JSVoidFunctionReturnValueUsed
       const res = await app.request('/logout', { method: 'POST' })
 
       expect(res.status).toBe(302)
@@ -644,11 +707,14 @@ describe('OAuth Routes', () => {
         issuer: config.issuer,
         end_session_endpoint: `${config.issuer}/logout`,
       }
+      // noinspection JSVoidFunctionReturnValueUsed
       vi.mocked(oauth.discoveryRequest).mockResolvedValue({} as unknown as Response)
+      // noinspection JSVoidFunctionReturnValueUsed
       vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue(
         mockAs as oauth.AuthorizationServer
       )
 
+      // noinspection JSVoidFunctionReturnValueUsed
       const res = await app.request('/logout', {
         method: 'POST',
         headers: {
@@ -682,6 +748,7 @@ describe('OAuth Routes', () => {
 
       const sessionId = 'logout-hook-session'
       const user = { sub: 'user-logout' }
+      // noinspection JSVoidFunctionReturnValueUsed
       await localAdapter.set(
         `session:${sessionId}`,
         {
@@ -698,6 +765,7 @@ describe('OAuth Routes', () => {
       vi.mocked(oauth.discoveryRequest).mockResolvedValue({} as unknown as Response)
       vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue(mockAs as oauth.AuthorizationServer)
 
+      // noinspection JSVoidFunctionReturnValueUsed
       const res = await localApp.request('/logout', {
         method: 'POST',
         headers: { Cookie: `__Host-session=${sessionId}` },
@@ -724,6 +792,7 @@ describe('OAuth Routes', () => {
       const localApp = localAuth.routes()
 
       const sessionId = 'logout-err-session'
+      // noinspection JSVoidFunctionReturnValueUsed
       await localAdapter.set(
         `session:${sessionId}`,
         {
@@ -737,7 +806,9 @@ describe('OAuth Routes', () => {
       )
 
       const mockAs = { issuer: config.issuer }
+      // noinspection JSVoidFunctionReturnValueUsed
       vi.mocked(oauth.discoveryRequest).mockResolvedValue({} as unknown as Response)
+      // noinspection JSVoidFunctionReturnValueUsed
       vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue(mockAs as oauth.AuthorizationServer)
 
       const res = await localApp.request('/logout', {
