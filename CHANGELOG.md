@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/neilpmas/bezzie/compare/v1.0.0...v1.0.1) (2026-04-24)
+
+
+### Bug Fixes
+
+* use SameSite=Lax on __Host-pkce-csrf cookie ([919c964](https://github.com/neilpmas/bezzie/commit/919c96404fb90ac42bd5a534467836d8882ac476))
+
 ## [1.0.0](https://github.com/neilpmas/bezzie/compare/v0.2.2...v1.0.0) (2026-04-23)
 
 
