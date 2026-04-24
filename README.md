@@ -1,16 +1,19 @@
 # Bezzie
 
+**Your BFF's BFF.** OAuth for Cloudflare Workers + Hono, done the safe way.
+
+If you followed Auth0's SPA guide, your access token lives in the browser — in memory, in a Web Worker, or in localStorage. Any script that runs on your page can reach it. That's not a criticism of Auth0; it's just the default SPA pattern, and it's the one [BCP 212](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-browser-based-apps) now recommends against.
+
+Bezzie moves the OAuth flow into your Cloudflare Worker. Tokens stay server-side in KV. The browser gets an `HttpOnly; Secure; SameSite` session cookie — unreadable by JavaScript, unavailable to XSS. Your frontend code gets simpler, not more complicated.
+
+```typescript
+app.route('/auth', auth.routes())       // login, callback, logout
+app.use('/api/*', auth.middleware())    // protect routes — user available as c.var.user
+```
+
 [![npm downloads](https://img.shields.io/npm/dw/bezzie)](https://www.npmjs.com/package/bezzie)
 
-> Bezzie is a BFF (Backend for Frontend) OAuth 2.0 library for Cloudflare Workers. It implements [BCP212](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-browser-based-apps) — your frontend never sees a JWT.
-
-**Bezzie** — your BFF's BFF. Handles the Backend for Frontend OAuth pattern so you don't have to.
-
-The BFF owns the OAuth flow and issues a session cookie to the frontend instead of handing tokens to the browser.
-
-```
-npm install bezzie
-```
+---
 
 ## Get started in 5 minutes
 
@@ -66,9 +69,9 @@ Source: [github.com/neilpmas/bezzie-demo](https://github.com/neilpmas/bezzie-dem
 
 ## Why
 
-Most OAuth libraries hand tokens directly to the browser. BCP212 says you shouldn't — it's a significant attack surface. Bezzie keeps tokens server-side in Cloudflare KV and gives the browser a session cookie instead.
+There's no open source library for this specific combination (BFF OAuth on Cloudflare Workers). The closest alternatives are Duende BFF (.NET) and `@auth0/nextjs-auth0` — both tied to specific frameworks and neither running at the edge.
 
-There's no open source library for this specific combination (BFF OAuth on Cloudflare Workers). The closest alternatives are Duende BFF (.NET) and `@auth0/nextjs-auth0` — both tied to specific frameworks.
+Bezzie is framework-agnostic, Workers-native, and ships with adapters for Cloudflare KV, Redis (including Upstash), and in-memory storage.
 
 ---
 
