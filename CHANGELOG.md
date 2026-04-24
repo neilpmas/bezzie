@@ -58,6 +58,7 @@
 ## Unreleased
 
 ### Added
+- CSRF cookie validation tests for `/callback` and `SameSite=Lax` assertion for `/login`
 - Subpath exports for adapters (`/cloudflare`, `/redis`, `/memory`) to support tree-shaking
 - `routes` config option to allow consumers to override the default internal auth route paths
 - Automated releases via `release-please`
@@ -66,6 +67,7 @@
 - `engines` field in `package.json` to specify Node.js >= 18 as the minimum runtime
 
 ### Fixed
+- Suppressed "Void function return value is used" IDE warnings in `test/routes.test.ts`
 - Callback handler now uses `validateAuthResponse()` before exchanging code (required for `oauth4webapi` v3)
 - OIDC discovery errors in `src/discovery.ts` are now caught and re-thrown with more descriptive messages
 - The `error` query parameter in the callback route is now mapped to fixed error messages instead of being returned directly in the response body
