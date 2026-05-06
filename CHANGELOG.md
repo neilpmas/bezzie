@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.2](https://github.com/neilpmas/bezzie/compare/v1.0.1...v1.0.2) (2026-05-06)
+
+
+### Documentation
+
+* fix status to v1.0.1 stable, add version/license/github badges ([9873ace](https://github.com/neilpmas/bezzie/commit/9873ace8e47294149cbffd24a1417b5256ab6f29))
+
 ## [1.0.1](https://github.com/neilpmas/bezzie/compare/v1.0.0...v1.0.1) (2026-04-24)
 
 
