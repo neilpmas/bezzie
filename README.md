@@ -11,7 +11,10 @@ app.route('/auth', auth.routes())       // login, callback, logout
 app.use('/api/*', auth.middleware())    // protect routes — user available as c.var.user
 ```
 
+[![npm version](https://img.shields.io/npm/v/bezzie)](https://www.npmjs.com/package/bezzie)
 [![npm downloads](https://img.shields.io/npm/dw/bezzie)](https://www.npmjs.com/package/bezzie)
+[![license](https://img.shields.io/npm/l/bezzie)](https://github.com/neilpmas/bezzie/blob/main/LICENSE)
+[![GitHub](https://img.shields.io/badge/github-neilpmas%2Fbezzie-blue)](https://github.com/neilpmas/bezzie)
 
 ---
 
@@ -283,7 +286,7 @@ wrangler secret put AUTH0_CLIENT_SECRET
 
 ## Status
 
-v0.1.0 — pre-release
+v1.0.1 — stable
 
 ---
 
