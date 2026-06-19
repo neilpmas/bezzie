@@ -81,6 +81,7 @@
 - `engines` field in `package.json` to specify Node.js >= 18 as the minimum runtime
 
 ### Fixed
+- Session cookie now uses `SameSite=Lax` instead of `Strict` — fixes users appearing logged out after IdP redirect because browsers block Strict cookies on cross-site navigation chains
 - Suppressed "Void function return value is used" IDE warnings in `test/routes.test.ts`
 - Callback handler now uses `validateAuthResponse()` before exchanging code (required for `oauth4webapi` v3)
 - OIDC discovery errors in `src/discovery.ts` are now caught and re-thrown with more descriptive messages

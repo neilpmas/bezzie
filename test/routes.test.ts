@@ -145,6 +145,46 @@ describe('OAuth Routes', () => {
       expect(await res.text()).toBe('Invalid or expired state')
     })
 
+    it('sets session cookie with SameSite=Lax, not Strict', async () => {
+      const state = 'samesite-test-state'
+      const code = 'samesite-test-code'
+      const codeVerifier = 'test-verifier-must-be-at-least-43-chars-long-aaa'
+      const csrfToken = 'samesite-csrf-token'
+
+      await adapter.set(
+        `pkce:${state}`,
+        { _type: 'pkce', codeVerifier, csrfToken } as PKCEState,
+        600
+      )
+
+      const mockAs = { issuer: config.issuer }
+      vi.mocked(oauth.discoveryRequest).mockResolvedValue({} as unknown as Response)
+      vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue(
+        mockAs as oauth.AuthorizationServer
+      )
+      vi.mocked(oauth.authorizationCodeGrantRequest).mockResolvedValue({} as unknown as Response)
+      vi.mocked(oauth.processAuthorizationCodeResponse).mockResolvedValue({
+        access_token: 'mock-access-token',
+        refresh_token: 'mock-refresh-token',
+        expires_in: 3600,
+        id_token: 'mock-id-token',
+      } as oauth.TokenEndpointResponse)
+      vi.mocked(oauth.getValidatedIdTokenClaims).mockReturnValue({
+        sub: 'user-123',
+        email: 'user@example.com',
+      } as unknown as oauth.IDToken)
+
+      const res = await app.request(`/callback?state=${state}&code=${code}`, {
+        headers: { Cookie: `__Host-pkce-csrf=${csrfToken}` },
+      })
+
+      expect(res.status).toBe(302)
+      const sessionCookie = res.headers.get('Set-Cookie')
+      expect(sessionCookie).toContain('__Host-session=')
+      expect(sessionCookie).toContain('SameSite=Lax')
+      expect(sessionCookie).not.toContain('SameSite=Strict')
+    })
+
     it('returns 400 when CSRF cookie is missing', async () => {
       const state = 'csrf-missing-state'
       const csrfToken = 'csrf-missing-token'
@@ -223,7 +263,7 @@ describe('OAuth Routes', () => {
       expect(cookie).toContain('__Host-session=')
       expect(cookie).toContain('HttpOnly')
       expect(cookie).toContain('Secure')
-      expect(cookie).toContain('SameSite=Strict')
+      expect(cookie).toContain('SameSite=Lax')
       expect(cookie).toContain('Max-Age=2592000')
 
       // Check session in adapter
@@ -732,7 +772,7 @@ describe('OAuth Routes', () => {
       expect(setCookieHeader).toContain('Max-Age=0')
       expect(setCookieHeader).toContain('HttpOnly')
       expect(setCookieHeader).toContain('Secure')
-      expect(setCookieHeader).toContain('SameSite=Strict')
+      expect(setCookieHeader).toContain('SameSite=Lax')
 
       // Check session deleted from adapter
       expect(await adapter.get(`session:${sessionId}`)).toBeNull()
