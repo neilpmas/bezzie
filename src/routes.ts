@@ -105,7 +105,7 @@ export function authRoutes<TUser extends Record<string, unknown> = Record<string
       path: '/',
       secure: true,
       httpOnly: true,
-      sameSite: 'Strict',
+      sameSite: 'Lax',
     })
 
     const as = await getAuthorizationServer(config, cache)
@@ -178,7 +178,7 @@ export function authRoutes<TUser extends Record<string, unknown> = Record<string
           path: '/',
           secure: true,
           httpOnly: true,
-          sameSite: 'Strict',
+          sameSite: 'Lax',
         })
         console.error(
           'Bezzie: mapClaims threw, aborting login:',
@@ -214,15 +214,13 @@ export function authRoutes<TUser extends Record<string, unknown> = Record<string
     // TTL for session in KV. Set to 30 days as per bug fix 3.
     await sessionStore.set(`session:${sessionId}`, session, config.sessionTtlSeconds ?? 30 * 24 * 60 * 60)
 
-    // SameSite=Strict is correct here: this cookie is set *after* the IdP redirect has
-    // already completed (i.e. in /callback, not before the redirect). By the time this
-    // setCookie runs the browser is back on our origin, so Strict does not block the
-    // cookie from being sent. Using Strict rather than Lax gives the strongest
-    // cross-site request forgery protection for all subsequent requests.
+    // SameSite=Lax is required here: the callback 302 is the tail of a cross-site
+    // navigation chain from the IdP, so browsers will not attach Strict cookies on
+    // the follow-up request. Lax still protects against CSRF on unsafe methods.
     setCookie(c, config.cookieName ?? '__Host-session', sessionId, {
       httpOnly: true,
       secure: true,
-      sameSite: 'Strict',
+      sameSite: 'Lax',
       path: '/',
       maxAge: config.sessionTtlSeconds ?? 30 * 24 * 60 * 60, // 30 days, matches KV session TTL
     })
@@ -243,7 +241,7 @@ export function authRoutes<TUser extends Record<string, unknown> = Record<string
           path: '/',
           secure: true,
           httpOnly: true,
-          sameSite: 'Strict',
+          sameSite: 'Lax',
         })
         console.error(
           'Bezzie: onLogin hook threw, aborting login:',
@@ -306,7 +304,7 @@ export function authRoutes<TUser extends Record<string, unknown> = Record<string
       path: '/',
       secure: true,
       httpOnly: true,
-      sameSite: 'Strict',
+      sameSite: 'Lax',
     })
 
     let logoutUrl: URL
