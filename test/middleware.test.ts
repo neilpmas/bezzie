@@ -720,4 +720,56 @@ describe('Middleware', () => {
       expect(await adapter.get(`session:${sessionId}`)).toBeNull()
     })
   })
+
+  describe('secureCookies: false', () => {
+    it('reads session cookie as "session" (not __Host-session)', async () => {
+      const insecureAdapter = new MemoryAdapter()
+      const insecureAuth = createBezzie({
+        issuer,
+        clientId: 'test-client-id',
+        clientSecret: 'test-client-secret',
+        audience: 'https://api.test.com',
+        adapter: () => insecureAdapter,
+        baseUrl: 'https://app.test.com',
+        secureCookies: false,
+      })
+
+      const insecureApp = new Hono<{ Variables: Variables }>()
+      insecureApp.use('/api/*', insecureAuth.middleware())
+      insecureApp.get('/api/me', (c) => {
+        return c.json({ user: c.get('user'), accessToken: c.get('accessToken') })
+      })
+
+      const mockAs = { issuer, jwks_uri: `${issuer}/jwks` }
+      vi.mocked(oauth.discoveryRequest).mockResolvedValue({} as unknown as Response)
+      vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue(mockAs as oauth.AuthorizationServer)
+
+      const sessionId = 'insecure-session-id'
+      const user = { sub: 'user-insecure' }
+      await insecureAdapter.set(
+        `session:${sessionId}`,
+        {
+          _type: 'session',
+          accessToken: 'valid-token',
+          refreshToken: 'valid-refresh',
+          expiresAt: Math.floor(Date.now() / 1000) + 3600,
+          createdAt: Math.floor(Date.now() / 1000),
+          user,
+        },
+        3600
+      )
+
+      vi.mocked(oauth.validateJwtAccessToken).mockResolvedValue({} as oauth.JWTAccessTokenClaims)
+
+      // Using unprefixed "session" cookie name
+      const res = await insecureApp.request('/api/me', {
+        headers: { Cookie: `session=${sessionId}` },
+      })
+
+      expect(res.status).toBe(200)
+      const data = (await res.json()) as { user?: Record<string, unknown>; accessToken?: string }
+      expect(data.user).toEqual(user)
+      expect(data.accessToken).toBe('valid-token')
+    })
+  })
 })

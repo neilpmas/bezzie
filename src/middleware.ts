@@ -94,7 +94,9 @@ async function authenticate<TUser extends Record<string, unknown> = Record<strin
   const sessionStore = config.adapter
 
   // 1. Read the sessionId cookie from the request
-  const sessionId = getCookie(c, config.cookieName ?? '__Host-session')
+  const secure = config.secureCookies !== false
+  const sessionCookieName = config.cookieName ?? (secure ? '__Host-session' : 'session')
+  const sessionId = getCookie(c, sessionCookieName)
 
   // 2. If no cookie → unauthenticated
   if (!sessionId) {

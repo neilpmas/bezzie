@@ -11,6 +11,9 @@ export function authRoutes<TUser extends Record<string, unknown> = Record<string
 ) {
   const router = new Hono()
   const sessionStore = config.adapter
+  const secure = config.secureCookies !== false
+  const pkceCookieName = secure ? '__Host-pkce-csrf' : 'pkce-csrf'
+  const sessionCookieName = config.cookieName ?? (secure ? '__Host-session' : 'session')
 
   router.get(config.routes?.login ?? '/login', async (c) => {
     const code_verifier = oauth.generateRandomCodeVerifier()
@@ -30,9 +33,9 @@ export function authRoutes<TUser extends Record<string, unknown> = Record<string
 
     // Bind the PKCE state to the user's browser session via a short-lived cookie
     // to prevent login-CSRF (S4).
-    setCookie(c, '__Host-pkce-csrf', csrfToken, {
+    setCookie(c, pkceCookieName, csrfToken, {
       httpOnly: true,
-      secure: true,
+      secure,
       sameSite: 'Lax', // Must be Lax — Strict blocks cross-site redirects from the IdP
       path: '/',
       maxAge: 600,
@@ -56,9 +59,11 @@ export function authRoutes<TUser extends Record<string, unknown> = Record<string
       authorizationUrl.searchParams.set('audience', config.audience)
     }
 
-    const requestUrl = new URL(c.req.url)
-    if (requestUrl.protocol === 'http:' && requestUrl.hostname !== 'localhost' && requestUrl.hostname !== '127.0.0.1') {
-      console.warn('Bezzie: running on HTTP in a non-localhost environment. The __Host- cookie prefix requires HTTPS — sessions will not be set correctly.')
+    if (!secure) {
+      const requestUrl = new URL(c.req.url)
+      if (requestUrl.hostname !== 'localhost' && requestUrl.hostname !== '127.0.0.1') {
+        console.warn('Bezzie: secureCookies is disabled on a non-localhost host. This is insecure — cookies will not have the Secure flag or __Host- prefix. Do not use this in production.')
+      }
     }
 
     return c.redirect(authorizationUrl.toString())
@@ -93,7 +98,7 @@ export function authRoutes<TUser extends Record<string, unknown> = Record<string
 
     // Login-CSRF protection (S4): the cookie set at /login must match the
     // csrfToken stored alongside the PKCE state in KV.
-    const cookieCsrfToken = getCookie(c, '__Host-pkce-csrf')
+    const cookieCsrfToken = getCookie(c, pkceCookieName)
     if (!cookieCsrfToken || !storedCsrfToken || cookieCsrfToken !== storedCsrfToken) {
       return c.text('Invalid CSRF token', 400)
     }
@@ -101,9 +106,9 @@ export function authRoutes<TUser extends Record<string, unknown> = Record<string
     await config.adapter.delete(`pkce:${state}`)
 
     // Clear the CSRF cookie now that it has served its purpose.
-    deleteCookie(c, '__Host-pkce-csrf', {
+    deleteCookie(c, pkceCookieName, {
       path: '/',
-      secure: true,
+      secure,
       httpOnly: true,
       sameSite: 'Lax',
     })
@@ -174,9 +179,9 @@ export function authRoutes<TUser extends Record<string, unknown> = Record<string
         } as { sub: string; email?: string } & TUser
       } catch (err) {
         // mapClaims threw — abort login, clean up
-        deleteCookie(c, config.cookieName ?? '__Host-session', {
+        deleteCookie(c, sessionCookieName, {
           path: '/',
-          secure: true,
+          secure,
           httpOnly: true,
           sameSite: 'Lax',
         })
@@ -206,7 +211,7 @@ export function authRoutes<TUser extends Record<string, unknown> = Record<string
 
     // Prevent session fixation (S11): if the user already had a session cookie,
     // remove its KV entry before minting a fresh session.
-    const existingSessionId = getCookie(c, config.cookieName ?? '__Host-session')
+    const existingSessionId = getCookie(c, sessionCookieName)
     if (existingSessionId) {
       await sessionStore.delete(`session:${existingSessionId}`)
     }
@@ -217,9 +222,9 @@ export function authRoutes<TUser extends Record<string, unknown> = Record<string
     // SameSite=Lax is required here: the callback 302 is the tail of a cross-site
     // navigation chain from the IdP, so browsers will not attach Strict cookies on
     // the follow-up request. Lax still protects against CSRF on unsafe methods.
-    setCookie(c, config.cookieName ?? '__Host-session', sessionId, {
+    setCookie(c, sessionCookieName, sessionId, {
       httpOnly: true,
-      secure: true,
+      secure,
       sameSite: 'Lax',
       path: '/',
       maxAge: config.sessionTtlSeconds ?? 30 * 24 * 60 * 60, // 30 days, matches KV session TTL
@@ -237,9 +242,9 @@ export function authRoutes<TUser extends Record<string, unknown> = Record<string
       } catch (err) {
         // onLogin errors bubble — abort login, clean up session
         await sessionStore.delete(`session:${sessionId}`)
-        deleteCookie(c, config.cookieName ?? '__Host-session', {
+        deleteCookie(c, sessionCookieName, {
           path: '/',
-          secure: true,
+          secure,
           httpOnly: true,
           sameSite: 'Lax',
         })
@@ -259,7 +264,7 @@ export function authRoutes<TUser extends Record<string, unknown> = Record<string
   })
 
   router.post(config.routes?.logout ?? '/logout', async (c) => {
-    const sessionId = getCookie(c, config.cookieName ?? '__Host-session')
+    const sessionId = getCookie(c, sessionCookieName)
     let idToken: string | undefined
     let refreshToken: string | undefined
     let loggedOutUser: Session<TUser>['user'] | undefined
@@ -300,9 +305,9 @@ export function authRoutes<TUser extends Record<string, unknown> = Record<string
       }
     }
 
-    deleteCookie(c, config.cookieName ?? '__Host-session', {
+    deleteCookie(c, sessionCookieName, {
       path: '/',
-      secure: true,
+      secure,
       httpOnly: true,
       sameSite: 'Lax',
     })

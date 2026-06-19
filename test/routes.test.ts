@@ -906,4 +906,133 @@ describe('OAuth Routes', () => {
       expect(location).toContain(`id_token_hint=${idToken}`)
     })
   })
+
+  describe('secureCookies: false', () => {
+    const insecureAdapter = new MemoryAdapter()
+    const insecureConfig = {
+      ...config,
+      secureCookies: false,
+      adapter: () => insecureAdapter,
+    }
+    const insecureAuth = createBezzie(insecureConfig)
+    const insecureApp = insecureAuth.routes()
+
+    it('login sets PKCE cookie without __Host- prefix and without Secure flag', async () => {
+      ;(insecureAuth as unknown as { cache: DiscoveryCache }).cache.cachedAS = null
+      ;(insecureAuth as unknown as { cache: DiscoveryCache }).cache.cacheExpiresAt = 0
+      const mockAs = {
+        issuer: config.issuer,
+        authorization_endpoint: `${config.issuer}/authorize`,
+      }
+      vi.mocked(oauth.discoveryRequest).mockResolvedValue({} as unknown as Response)
+      vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue(
+        mockAs as oauth.AuthorizationServer
+      )
+
+      const res = await insecureApp.request('/login')
+      const cookie = res.headers.get('Set-Cookie')
+      expect(cookie).toContain('pkce-csrf=')
+      expect(cookie).not.toContain('__Host-pkce-csrf=')
+      expect(cookie).not.toContain('Secure')
+    })
+
+    it('callback sets session cookie without __Host- prefix and without Secure flag', async () => {
+      ;(insecureAuth as unknown as { cache: DiscoveryCache }).cache.cachedAS = null
+      ;(insecureAuth as unknown as { cache: DiscoveryCache }).cache.cacheExpiresAt = 0
+
+      const state = 'insecure-test-state'
+      const code = 'insecure-test-code'
+      const codeVerifier = 'test-verifier-must-be-at-least-43-chars-long-aaa'
+      const csrfToken = 'insecure-csrf-token'
+
+      await insecureAdapter.set(
+        `pkce:${state}`,
+        { _type: 'pkce', codeVerifier, csrfToken } as PKCEState,
+        600
+      )
+
+      const mockAs = { issuer: config.issuer }
+      vi.mocked(oauth.discoveryRequest).mockResolvedValue({} as unknown as Response)
+      vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue(
+        mockAs as oauth.AuthorizationServer
+      )
+      vi.mocked(oauth.authorizationCodeGrantRequest).mockResolvedValue({} as unknown as Response)
+      vi.mocked(oauth.processAuthorizationCodeResponse).mockResolvedValue({
+        access_token: 'mock-access-token',
+        refresh_token: 'mock-refresh-token',
+        expires_in: 3600,
+        id_token: 'mock-id-token',
+      } as oauth.TokenEndpointResponse)
+      vi.mocked(oauth.getValidatedIdTokenClaims).mockReturnValue({
+        sub: 'user-123',
+        email: 'user@example.com',
+      } as unknown as oauth.IDToken)
+
+      const res = await insecureApp.request(`/callback?state=${state}&code=${code}`, {
+        headers: { Cookie: `pkce-csrf=${csrfToken}` },
+      })
+
+      expect(res.status).toBe(302)
+      const cookie = res.headers.get('Set-Cookie')
+      expect(cookie).toContain('session=')
+      expect(cookie).not.toContain('__Host-session=')
+      expect(cookie).not.toContain('Secure')
+    })
+
+    it('callback reads the unprefixed PKCE cookie correctly (CSRF validation works)', async () => {
+      ;(insecureAuth as unknown as { cache: DiscoveryCache }).cache.cachedAS = null
+      ;(insecureAuth as unknown as { cache: DiscoveryCache }).cache.cacheExpiresAt = 0
+
+      const state = 'insecure-csrf-state'
+      const csrfToken = 'insecure-csrf-token-2'
+      const codeVerifier = 'test-verifier-must-be-at-least-43-chars-long-aaa'
+
+      await insecureAdapter.set(
+        `pkce:${state}`,
+        { _type: 'pkce', codeVerifier, csrfToken } as PKCEState,
+        600
+      )
+
+      const mockAs = { issuer: config.issuer }
+      vi.mocked(oauth.discoveryRequest).mockResolvedValue({} as unknown as Response)
+      vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue(
+        mockAs as oauth.AuthorizationServer
+      )
+      vi.mocked(oauth.authorizationCodeGrantRequest).mockResolvedValue({} as unknown as Response)
+      vi.mocked(oauth.processAuthorizationCodeResponse).mockResolvedValue({
+        access_token: 'mock-access-token',
+        refresh_token: 'mock-refresh-token',
+        expires_in: 3600,
+        id_token: 'mock-id-token',
+      } as oauth.TokenEndpointResponse)
+      vi.mocked(oauth.getValidatedIdTokenClaims).mockReturnValue({
+        sub: 'user-456',
+      } as unknown as oauth.IDToken)
+
+      // Send with unprefixed cookie name — should pass CSRF validation
+      const res = await insecureApp.request(`/callback?state=${state}&code=test-code`, {
+        headers: { Cookie: `pkce-csrf=${csrfToken}` },
+      })
+
+      expect(res.status).toBe(302)
+    })
+
+    it('default behaviour unchanged — secureCookies defaults to true with __Host- prefix and Secure flag', async () => {
+      ;(auth as unknown as { cache: DiscoveryCache }).cache.cachedAS = null
+      ;(auth as unknown as { cache: DiscoveryCache }).cache.cacheExpiresAt = 0
+      const mockAs = {
+        issuer: config.issuer,
+        authorization_endpoint: `${config.issuer}/authorize`,
+      }
+      vi.mocked(oauth.discoveryRequest).mockResolvedValue({} as unknown as Response)
+      vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue(
+        mockAs as oauth.AuthorizationServer
+      )
+
+      const res = await app.request('/login')
+      const cookie = res.headers.get('Set-Cookie')
+      expect(cookie).toContain('__Host-pkce-csrf=')
+      expect(cookie).toContain('Secure')
+    })
+  })
 })
