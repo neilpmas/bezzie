@@ -125,6 +125,13 @@ export interface BezzieConfig<TUser extends Record<string, unknown> = Record<str
   cookieName?: string
 
   /**
+   * Whether to set the `Secure` flag and `__Host-` prefix on cookies.
+   * Disable for plain HTTP local development only.
+   * @default true
+   */
+  secureCookies?: boolean
+
+  /**
    * OAuth scopes to request.
    *
    * Providing a value **replaces** the default list entirely — it does not

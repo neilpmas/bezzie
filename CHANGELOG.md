@@ -72,6 +72,7 @@
 ## Unreleased
 
 ### Added
+- `secureCookies` config option — when `false`, drops the `Secure` flag and `__Host-` prefix from all cookies for plain HTTP local development
 - CSRF cookie validation tests for `/callback` and `SameSite=Lax` assertion for `/login`
 - Subpath exports for adapters (`/cloudflare`, `/redis`, `/memory`) to support tree-shaking
 - `routes` config option to allow consumers to override the default internal auth route paths
