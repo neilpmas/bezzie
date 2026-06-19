@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.1.0](https://github.com/neilpmas/bezzie/compare/v1.0.2...v1.1.0) (2026-06-19)
+
+
+### Features
+
+* add secureCookies config option for local HTTP development ([c527cac](https://github.com/neilpmas/bezzie/commit/c527cac08354f8de3e477c72d73bf1879b0b4447))
+* add secureCookies config option for local HTTP development ([f8ec146](https://github.com/neilpmas/bezzie/commit/f8ec146f24b49a647c1828b30b2098771def2a69))
+
+
+### Bug Fixes
+
+* change session cookie from SameSite=Strict to SameSite=Lax ([0fa0891](https://github.com/neilpmas/bezzie/commit/0fa0891932ca8698a8665ea1574c5d0d5f0104f2))
+* change session cookie from SameSite=Strict to SameSite=Lax ([948af2a](https://github.com/neilpmas/bezzie/commit/948af2aeed88c2091e6ee5d4da09505a0a5a7189))
+
 ## [1.0.2](https://github.com/neilpmas/bezzie/compare/v1.0.1...v1.0.2) (2026-05-06)
 
 
