@@ -68,6 +68,42 @@ describe('createBezzie', () => {
     }
     expect(() => createBezzie(config)).toThrow('Bezzie: issuer must be a valid URL')
   })
+
+  it('rejects defaultReturnTo that does not start with /', () => {
+    const config = {
+      issuer: 'https://test.auth0.com',
+      clientId: 'test-client-id',
+      clientSecret: 'test-client-secret',
+      adapter: memoryAdapter(),
+      baseUrl: 'https://app.test.com',
+      defaultReturnTo: 'https://evil.com',
+    }
+    expect(() => createBezzie(config)).toThrow('Bezzie: defaultReturnTo must be a relative path starting with / (not //)')
+  })
+
+  it('rejects defaultReturnTo starting with //', () => {
+    const config = {
+      issuer: 'https://test.auth0.com',
+      clientId: 'test-client-id',
+      clientSecret: 'test-client-secret',
+      adapter: memoryAdapter(),
+      baseUrl: 'https://app.test.com',
+      defaultReturnTo: '//evil.com',
+    }
+    expect(() => createBezzie(config)).toThrow('Bezzie: defaultReturnTo must be a relative path starting with / (not //)')
+  })
+
+  it('accepts valid defaultReturnTo', () => {
+    const config = {
+      issuer: 'https://test.auth0.com',
+      clientId: 'test-client-id',
+      clientSecret: 'test-client-secret',
+      adapter: memoryAdapter(),
+      baseUrl: 'https://app.test.com',
+      defaultReturnTo: '/dashboard',
+    }
+    expect(() => createBezzie(config)).not.toThrow()
+  })
 })
 
 describe('providers', () => {

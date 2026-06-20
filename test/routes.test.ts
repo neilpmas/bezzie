@@ -359,6 +359,87 @@ describe('OAuth Routes', () => {
       expect(res.headers.get('Location')).toBe('/')
     })
 
+    it('uses defaultReturnTo when no returnTo in PKCE state', async () => {
+      const localAdapter = new MemoryAdapter()
+      const localAuth = createBezzie({ ...config, adapter: () => localAdapter, defaultReturnTo: '/dashboard' })
+      const localApp = localAuth.routes()
+
+      const state = 'test-state-default-ret'
+      const code = 'test-code'
+      const codeVerifier = 'test-verifier-must-be-at-least-43-chars-long-aaa'
+      const csrfToken = 'test-csrf-default-ret'
+
+      await localAdapter.set(
+        `pkce:${state}`,
+        { _type: 'pkce', codeVerifier, csrfToken } as PKCEState,
+        600
+      )
+
+      const mockAs = { issuer: config.issuer }
+      vi.mocked(oauth.discoveryRequest).mockResolvedValue({} as unknown as Response)
+      vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue(
+        mockAs as oauth.AuthorizationServer
+      )
+      vi.mocked(oauth.authorizationCodeGrantRequest).mockResolvedValue({} as unknown as Response)
+      vi.mocked(oauth.processAuthorizationCodeResponse).mockResolvedValue({
+        access_token: 'mock-access-token',
+        expires_in: 3600,
+        id_token: 'mock-id-token',
+      } as oauth.TokenEndpointResponse)
+      // noinspection JSVoidFunctionReturnValueUsed
+      vi.mocked(oauth.getValidatedIdTokenClaims).mockReturnValue({
+        sub: 'user-123',
+      } as unknown as oauth.IDToken)
+
+      const res = await localApp.request(`/callback?state=${state}&code=${code}`, {
+        headers: { Cookie: `__Host-pkce-csrf=${csrfToken}` },
+      })
+
+      expect(res.status).toBe(302)
+      expect(res.headers.get('Location')).toBe('/dashboard')
+    })
+
+    it('explicit returnTo takes precedence over defaultReturnTo', async () => {
+      const localAdapter = new MemoryAdapter()
+      const localAuth = createBezzie({ ...config, adapter: () => localAdapter, defaultReturnTo: '/dashboard' })
+      const localApp = localAuth.routes()
+
+      const state = 'test-state-override-ret'
+      const code = 'test-code'
+      const codeVerifier = 'test-verifier-must-be-at-least-43-chars-long-aaa'
+      const returnTo = '/settings'
+      const csrfToken = 'test-csrf-override-ret'
+
+      await localAdapter.set(
+        `pkce:${state}`,
+        { _type: 'pkce', codeVerifier, returnTo, csrfToken } as PKCEState,
+        600
+      )
+
+      const mockAs = { issuer: config.issuer }
+      vi.mocked(oauth.discoveryRequest).mockResolvedValue({} as unknown as Response)
+      vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue(
+        mockAs as oauth.AuthorizationServer
+      )
+      vi.mocked(oauth.authorizationCodeGrantRequest).mockResolvedValue({} as unknown as Response)
+      vi.mocked(oauth.processAuthorizationCodeResponse).mockResolvedValue({
+        access_token: 'mock-access-token',
+        expires_in: 3600,
+        id_token: 'mock-id-token',
+      } as oauth.TokenEndpointResponse)
+      // noinspection JSVoidFunctionReturnValueUsed
+      vi.mocked(oauth.getValidatedIdTokenClaims).mockReturnValue({
+        sub: 'user-123',
+      } as unknown as oauth.IDToken)
+
+      const res = await localApp.request(`/callback?state=${state}&code=${code}`, {
+        headers: { Cookie: `__Host-pkce-csrf=${csrfToken}` },
+      })
+
+      expect(res.status).toBe(302)
+      expect(res.headers.get('Location')).toBe('/settings')
+    })
+
     it('calls onLogin hook with correct context after successful login', async () => {
       const onLogin = vi.fn()
       const localAdapter = new MemoryAdapter()
