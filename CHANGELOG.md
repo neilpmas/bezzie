@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.0](https://github.com/neilpmas/bezzie/compare/v1.1.0...v1.2.0) (2026-06-20)
+
+
+### Features
+
+* add defaultReturnTo config option ([173f51a](https://github.com/neilpmas/bezzie/commit/173f51a6a680170074d993510f0182bafbc52849))
+* add defaultReturnTo config option ([3125452](https://github.com/neilpmas/bezzie/commit/3125452ab7fddd0e274d737e7a07cf0f3dd517b2))
+
 ## [1.1.0](https://github.com/neilpmas/bezzie/compare/v1.0.2...v1.1.0) (2026-06-19)
 
 
