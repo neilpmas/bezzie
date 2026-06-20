@@ -4,7 +4,7 @@
 
 If you followed Auth0's SPA guide, your access token lives in the browser — in memory, in a Web Worker, or in localStorage. Any script that runs on your page can reach it. That's not a criticism of Auth0; it's just the default SPA pattern, and it's the one [BCP 212](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-browser-based-apps) now recommends against.
 
-Bezzie moves the OAuth flow into your Cloudflare Worker. Tokens stay server-side in KV. The browser gets an `HttpOnly; Secure; SameSite` session cookie — unreadable by JavaScript, unavailable to XSS. Your frontend code gets simpler, not more complicated.
+Bezzie moves the OAuth flow into your Cloudflare Worker. Tokens stay server-side in KV. The browser gets an `HttpOnly; Secure; SameSite=Lax` session cookie — unreadable by JavaScript, unavailable to XSS. Your frontend code gets simpler, not more complicated.
 
 ```typescript
 app.route('/auth', auth.routes())       // login, callback, logout
@@ -103,15 +103,25 @@ This gives you:
 
 | Route | Description |
 |---|---|
-| `GET /auth/login` | Redirects to provider, initiates Authorization Code + PKCE flow. Supports `returnTo` query param for post-login redirect. |
+| `GET /auth/login` | Redirects to provider, initiates Authorization Code + PKCE flow. Supports `?returnTo=/path` query param for post-login redirect; falls back to `defaultReturnTo` (default `/`). |
 | `GET /auth/callback` | Exchanges code for tokens, stores session in KV, sets cookie. |
 | `POST /auth/logout` | Clears session, clears cookie, redirects to provider logout. |
 
 ---
 
+## Optional Authentication
+
+Use `auth.optionalMiddleware()` for public pages that should show user state when logged in but not block anonymous visitors. It populates `c.var.user` and `c.var.accessToken` if a valid session exists and always calls `next()`.
+
+```typescript
+app.use('/*', auth.optionalMiddleware())
+```
+
+---
+
 ## Accessing User Identity
 
-After `auth.middleware()`, downstream handlers can access the user identity and the current access token via `c.var`:
+After `auth.middleware()` (or `auth.optionalMiddleware()` when a session exists), downstream handlers can access the user identity and the current access token via `c.var`:
 
 ```typescript
 app.get('/api/me', (c) => {
@@ -229,15 +239,28 @@ adapter: new MemoryAdapter()
 
 ## Configuration
 
-| Option | Type | Description |
-|---|---|---|
-| `issuer` | `string` | Your OIDC provider issuer URL (e.g. `https://tenant.auth0.com`) |
-| `clientId` | `string` | OAuth client ID |
-| `clientSecret` | `string` | OAuth client secret — keep in Workers secrets |
-| `audience` | `string` | API audience identifier |
-| `adapter` | `SessionAdapter` | Session adapter (e.g. `cloudflareKVAdapter(env.SESSION_KV)`) |
-| `baseUrl` | `string` | Base URL of your application (used for callback and redirects) |
-| `providerOverrides` | `object` | Hard overrides for specific provider values (`logoutUrl`, `tokenEndpoint`) |
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `issuer` | `string` | *required* | Your OIDC provider issuer URL (e.g. `https://tenant.auth0.com`) |
+| `clientId` | `string` | *required* | OAuth client ID |
+| `clientSecret` | `string` | *required* | OAuth client secret — keep in Workers secrets |
+| `adapter` | `SessionAdapterFactory` | *required* | Session adapter factory (e.g. `cloudflareKVAdapter(env.SESSION_KV)`) |
+| `baseUrl` | `string` | *required* | Base URL of your application (used for callback and redirects) |
+| `audience` | `string` | — | API audience identifier |
+| `scopes` | `string[]` | `['openid', 'profile', 'email', 'offline_access']` | OAuth scopes to request. Replaces the default list entirely. |
+| `routes` | `object` | `{ login: '/login', callback: '/callback', logout: '/logout' }` | Custom route paths for auth routes |
+| `cookieName` | `string` | `'__Host-session'` | Name of the session cookie |
+| `secureCookies` | `boolean` | `true` | When `false`, drops the `Secure` flag and `__Host-` prefix from all cookies — for plain-HTTP localhost development. Never disable in production. |
+| `defaultReturnTo` | `string` | `'/'` | Post-login redirect when no `?returnTo` query param is given. Must be a relative path. |
+| `sessionTtlSeconds` | `number` | `2592000` (30 days) | Session TTL in seconds |
+| `refreshBufferSeconds` | `number` | `60` | Seconds before access token expiry to trigger a refresh |
+| `validateAccessToken` | `boolean` | `true` | Whether to validate the access token JWT via JWKS |
+| `mapClaims` | `(claims) => TUser` | — | Map raw ID token claims to your user type. Throw to abort login. |
+| `providerOverrides` | `object` | — | Hard overrides for provider values (`logoutUrl`, `tokenEndpoint`) |
+| `onLogin` | `(ctx) => void` | — | Called after session is created. Throw to abort login. |
+| `onRefresh` | `(ctx) => void` | — | Called after token refresh. Errors routed to `onError`. |
+| `onLogout` | `(ctx) => void` | — | Called after session is deleted. Errors routed to `onError`. |
+| `onError` | `(err, ctx) => void` | `console.error` | Handler for non-fatal hook errors |
 
 ---
 
@@ -286,7 +309,7 @@ wrangler secret put AUTH0_CLIENT_SECRET
 
 ## Status
 
-v1.0.1 — stable
+v1.2.0 — stable
 
 ---
 
