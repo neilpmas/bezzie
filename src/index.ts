@@ -132,6 +132,14 @@ export interface BezzieConfig<TUser extends Record<string, unknown> = Record<str
   secureCookies?: boolean
 
   /**
+   * Default path to redirect to after login when no `?returnTo` query
+   * parameter is provided on the login route.
+   * Must be a relative path starting with `/` (not `//`).
+   * @default '/'
+   */
+  defaultReturnTo?: string
+
+  /**
    * OAuth scopes to request.
    *
    * Providing a value **replaces** the default list entirely — it does not
@@ -294,6 +302,12 @@ function createBezzie<TUser extends Record<string, unknown> = Record<string, unk
     new URL(config.issuer)
   } catch {
     throw new ConfigError('config_invalid', 'Bezzie: issuer must be a valid URL')
+  }
+
+  if (config.defaultReturnTo !== undefined) {
+    if (!config.defaultReturnTo.startsWith('/') || config.defaultReturnTo.startsWith('//')) {
+      throw new ConfigError('config_invalid', 'Bezzie: defaultReturnTo must be a relative path starting with / (not //)')
+    }
   }
 
   const adapter = config.adapter<TUser>()

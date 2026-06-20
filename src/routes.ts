@@ -260,7 +260,7 @@ export function authRoutes<TUser extends Record<string, unknown> = Record<string
       return c.redirect(returnTo)
     }
 
-    return c.redirect('/')
+    return c.redirect(config.defaultReturnTo ?? '/')
   })
 
   router.post(config.routes?.logout ?? '/logout', async (c) => {

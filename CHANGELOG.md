@@ -86,6 +86,7 @@
 ## Unreleased
 
 ### Added
+- `defaultReturnTo` config option — sets the default redirect path after login when no `?returnTo` query parameter is provided (defaults to `/`)
 - `secureCookies` config option — when `false`, drops the `Secure` flag and `__Host-` prefix from all cookies for plain HTTP local development
 - CSRF cookie validation tests for `/callback` and `SameSite=Lax` assertion for `/login`
 - Subpath exports for adapters (`/cloudflare`, `/redis`, `/memory`) to support tree-shaking
