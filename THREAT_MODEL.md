@@ -67,6 +67,15 @@ The core invariant: **access tokens and refresh tokens never leave the Worker**.
 
 **Mitigation:** All outbound fetches to the IdP (discovery, token exchange, revocation, JWKS) use `AbortSignal.timeout(5000)` — 5 second timeout.
 
+### Auth-endpoint flood / storage quota exhaustion
+**Attack:** Every unauthenticated `GET /login` writes a PKCE-state entry to the session adapter. On Cloudflare KV's free tier (1,000 writes/day), a trivial unauthenticated loop against `/login` exhausts that quota in minutes — after which `adapter.set` starts failing and nobody can log in. This denies login to real users; it does not require guessing any credential.
+
+**Mitigation:** `/login` and `/callback` are rate-limited by client IP by default (`rateLimit` config), with an in-memory pre-filter in front of the adapter-backed counter so the counters themselves don't consume the quota they protect. Fails open on any counter-store error. See the README's Security section.
+
+**Explicitly not covered by this:** credential-stuffing or password brute-force. With a hosted IdP, the actual password submission happens on the IdP's own login page, which bezzie never sees — rate-limiting `/login` does nothing to slow a guessing attack against it. That is the IdP's responsibility (e.g. Auth0 Attack Protection, Okta ThreatInsight).
+
+**Also not covered by this:** a *sustained* flood operating right at the configured rate for a long period. The default (`limit: 10, windowSeconds: 120`) bounds burst throughput — it turns "exhausted in seconds" into "would take hours of sustained, easily-detectable effort" — but one determined IP sustaining the allowed rate for a full day can still exceed a typical free-tier daily write quota. This is rate limiting, not a hard daily cap; treat it as one layer, and pair it with edge-level protection (e.g. Cloudflare's own Rate Limiting rules) for an actual guarantee.
+
 ---
 
 ## What bezzie does NOT protect against
@@ -109,7 +118,7 @@ bezzie forwards access tokens to upstream APIs in `Authorization: Bearer` header
 
 ## Out of scope
 
-- DDoS / rate limiting — use Cloudflare's built-in rate limiting rules
-- Bot detection — out of scope for an auth library
+- General DDoS / bot detection at the edge — use Cloudflare's built-in rate limiting rules and bot management. Bezzie's own `/login`/`/callback` rate limiting (above) is narrower and specific: it defends bezzie's own storage write quota, not the network or application layer generally.
+- Credential-stuffing / password brute-force protection — the actual credential submission happens on the IdP's own page, which bezzie never sees. Use the IdP's own protection (e.g. Auth0 Attack Protection, Okta ThreatInsight).
 - Multi-tenant isolation — the deploying application is responsible for tenant boundaries
 - Phishing — bezzie cannot protect against a user being directed to a fake login page

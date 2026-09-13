@@ -11,6 +11,8 @@ import {
   type HookErrorContext,
 } from './middleware'
 import { createDiscoveryCache, type DiscoveryCache } from './discovery'
+import { cspContributions, type CspContributions } from './csp'
+import { createRateLimiter, type RateLimiterOptions } from './ratelimit'
 
 import type { SessionAdapter, SessionAdapterFactory } from './session'
 import { ConfigError } from './errors'
@@ -202,6 +204,56 @@ export interface BezzieConfig<TUser extends Record<string, unknown> = Record<str
    * Defaults to console.error. onLogin errors still bubble.
    */
   onError?: (err: unknown, ctx: HookErrorContext) => void
+
+  /**
+   * Flood and quota protection on bezzie's own auth routes (`/auth/login`,
+   * `/auth/callback`). Every unauthenticated `/auth/login` request performs
+   * an adapter write (the PKCE state) — this bounds the *burst rate* of an
+   * unauthenticated flood so it can't exhaust the storage write quota in
+   * seconds. It is not a hard daily cap: a sustained attacker operating
+   * right at the configured rate for a full day can still accumulate more
+   * writes than a typical free-tier quota allows. For a hard guarantee, pair
+   * this with edge-level protection (e.g. Cloudflare's own Rate Limiting
+   * rules), which bounds the same traffic without touching this adapter's
+   * quota at all. See the README's Security section for the numbers.
+   *
+   * This is **not** brute-force or credential-stuffing protection. With a
+   * hosted IdP, the actual credential submission happens on the IdP's own
+   * login page — bezzie never sees it, so limiting these routes does
+   * nothing to slow a password-guessing attack. That is the IdP's job (e.g.
+   * Auth0 Attack Protection, Okta ThreatInsight).
+   *
+   * Fails open on any counter-store error.
+   */
+  rateLimit?: {
+    /**
+     * @default true
+     */
+    enabled?: boolean
+    /**
+     * Max requests per window per client IP.
+     * @default 10
+     */
+    limit?: number
+    /**
+     * Window size in seconds. Must be >= 60 to stay compatible with the
+     * minimum TTL enforced by KV-backed adapters (a shorter value is still
+     * accepted — the adapter write just uses a 60s floor for its TTL).
+     * @default 120
+     */
+    windowSeconds?: number
+    /**
+     * Whether to trust `X-Real-IP`/`X-Forwarded-For` for client IP
+     * derivation. `CF-Connecting-IP` is always trusted (set by the
+     * Cloudflare edge, not attacker-controlled). Only enable this behind a
+     * proxy you control that strips client-supplied values for these
+     * headers — otherwise a client can set them itself to defeat the
+     * limiter. When no trustworthy IP can be found, limiting is skipped for
+     * that request rather than grouping every such client into one bucket.
+     * @default false
+     */
+    trustProxyHeaders?: boolean
+  }
 }
 
 /**
@@ -275,6 +327,21 @@ export interface Bezzie<TUser extends Record<string, unknown> = Record<string, u
    * Returns a Hono middleware that sets user context if a session exists but always calls next().
    */
   optionalMiddleware: () => MiddlewareHandler<{ Variables: OptionalVariables<TUser> }>
+
+  /**
+   * Returns the CSP directive fragments (origins keyed by directive) that
+   * bezzie's OAuth flow needs, derived from OIDC discovery. Merge these into
+   * your app's own Content-Security-Policy. See {@link CspContributions}.
+   */
+  cspContributions: () => Promise<CspContributions>
+
+  /**
+   * Creates a reusable rate-limiting Hono middleware for your own routes,
+   * backed by the same adapter bezzie uses for sessions. Keyed on the
+   * authenticated user (`c.var.user.sub`) by default, falling back to
+   * client IP — pass `keyFn` to override. Fails open on storage errors.
+   */
+  rateLimiter: (options: RateLimiterOptions) => MiddlewareHandler
 }
 
 /**
@@ -320,6 +387,8 @@ function createBezzie<TUser extends Record<string, unknown> = Record<string, unk
     routes: () => router,
     middleware: () => middleware(resolvedConfig, cache),
     optionalMiddleware: () => optionalMiddleware(resolvedConfig, cache),
+    cspContributions: () => cspContributions(resolvedConfig, cache),
+    rateLimiter: (options: RateLimiterOptions) => createRateLimiter(resolvedConfig.adapter, options),
     cache,
   } as Bezzie<TUser> & { cache: DiscoveryCache }
 }
@@ -337,8 +406,10 @@ export type {
   LogoutHookContext,
   HookErrorContext,
 } from './middleware'
-export type { SessionAdapter, SessionAdapterFactory, PKCEState, Session, StoredSession } from './session'
+export type { SessionAdapter, SessionAdapterFactory, PKCEState, Session, StoredSession, RateLimitRecord } from './session'
 export { CloudflareKVAdapter, RedisAdapter, MemoryAdapter } from './session'
+export type { CspContributions } from './csp'
+export type { RateLimiterOptions } from './ratelimit'
 export {
   BezzieError,
   DiscoveryError,

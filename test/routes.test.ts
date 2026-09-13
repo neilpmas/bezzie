@@ -25,6 +25,9 @@ describe('OAuth Routes', () => {
     audience: 'https://api.test.com',
     adapter: () => adapter,
     baseUrl: 'https://app.test.com',
+    // Rate limiting is covered in its own test file — disabled here so the
+    // many rapid same-IP requests this file makes don't trip it.
+    rateLimit: { enabled: false },
   }
 
   const auth = createBezzie(config)

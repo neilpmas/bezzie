@@ -31,9 +31,11 @@ Bezzie implements the [OAuth 2.0 for Browser-Based Apps (BCP212)](https://datatr
 - Open redirects (the `returnTo` parameter is validated to be a relative path only)
 - Token theft via XSS (the session cookie is `HttpOnly` — JavaScript cannot read it)
 - Expired sessions (absolute 90-day expiry enforced independently of KV TTL)
+- Auth-endpoint flood / storage quota exhaustion (`/login` and `/callback` are rate-limited by default — see [THREAT_MODEL.md](THREAT_MODEL.md); this is flood/quota protection, **not** brute-force or credential-stuffing protection)
 
 **What bezzie does not protect against (out of scope):**
 - Compromise of the Cloudflare KV namespace
 - Compromise of the OAuth client secret
 - Attacks against the Identity Provider itself
 - Network-level attacks (TLS termination is handled by Cloudflare)
+- Credential-stuffing / password brute-force — the credential submission happens on the IdP's own page, which bezzie never sees; this is the IdP's responsibility

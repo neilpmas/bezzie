@@ -1,5 +1,5 @@
 import { Session } from '../session'
-import { PKCEState, SessionAdapter, SessionAdapterFactory } from './types'
+import { PKCEState, RateLimitRecord, SessionAdapter, SessionAdapterFactory } from './types'
 import { SessionStoreError } from '../errors'
 
 export class CloudflareKVAdapter<TUser extends Record<string, unknown> = Record<string, unknown>>
@@ -7,13 +7,13 @@ export class CloudflareKVAdapter<TUser extends Record<string, unknown> = Record<
 {
   constructor(private kv: KVNamespace) {}
 
-  async get(sessionId: string): Promise<Session<TUser> | PKCEState | null> {
-    return await this.kv.get<Session<TUser> | PKCEState>(sessionId, 'json')
+  async get(sessionId: string): Promise<Session<TUser> | PKCEState | RateLimitRecord | null> {
+    return await this.kv.get<Session<TUser> | PKCEState | RateLimitRecord>(sessionId, 'json')
   }
 
   async set(
     sessionId: string,
-    session: Session<TUser> | PKCEState,
+    session: Session<TUser> | PKCEState | RateLimitRecord,
     ttlSeconds: number
   ): Promise<void> {
     if (ttlSeconds < 60) {

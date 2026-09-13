@@ -106,8 +106,10 @@ async function authenticate<TUser extends Record<string, unknown> = Record<strin
   // 3. Look up the session in KV using SessionStore
   let session = await sessionStore.get(`session:${sessionId}`)
 
-  // 4. If no session found or it's a PKCE state → unauthenticated
-  if (!session || session._type === 'pkce') {
+  // 4. If no session found, or it's a PKCE state or rate-limit counter
+  // (neither of which is ever actually stored under a `session:` key, but
+  // the adapter's return type covers all three) → unauthenticated.
+  if (!session || session._type === 'pkce' || session._type === 'ratelimit') {
     return { type: 'unauthenticated' }
   }
 

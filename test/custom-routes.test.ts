@@ -30,6 +30,9 @@ describe('Custom Routes', () => {
       callback: '/custom-callback',
       logout: '/custom-logout',
     },
+    // Rate limiting is covered in its own test file — disabled here so the
+    // many rapid same-IP requests this file makes don't trip it.
+    rateLimit: { enabled: false },
   }
 
   const auth = createBezzie(config)
