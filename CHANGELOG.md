@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/neilpmas/bezzie/compare/v1.2.0...v1.3.0) (2026-09-13)
+
+
+### Features
+
+* harden auth routes — security headers, CSP helper, rate limiting ([ba0c331](https://github.com/neilpmas/bezzie/commit/ba0c3310e10bd9b99ea542ae6a53d056d2cc5972))
+
 ## [1.2.0](https://github.com/neilpmas/bezzie/compare/v1.1.0...v1.2.0) (2026-06-20)
 
 
