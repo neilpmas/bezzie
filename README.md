@@ -214,6 +214,8 @@ import { cloudflareKVAdapter } from 'bezzie'
 adapter: cloudflareKVAdapter(env.SESSION_KV)
 ```
 
+**Write cost:** every unauthenticated `GET /login` writes one PKCE-state entry to KV. The [free tier](https://developers.cloudflare.com/kv/platform/pricing/) allows 1,000 writes/day — plan your KV usage (or upgrade tiers) with that in mind for public-facing apps. Rate limiting is on by default to bound the *burst rate* of an unauthenticated flood; it is not a hard daily cap against a sustained one — see [Security](#security) for the actual numbers and how to pair it with edge-level protection for a hard guarantee.
+
 ### Redis (Upstash)
 Good for cross-region session consistency. Works with [Upstash Redis](https://upstash.com) (recommended for Cloudflare Workers) and any Redis client with `get`/`set`/`del` methods.
 
@@ -261,6 +263,7 @@ adapter: new MemoryAdapter()
 | `onRefresh` | `(ctx) => void` | — | Called after token refresh. Errors routed to `onError`. |
 | `onLogout` | `(ctx) => void` | — | Called after session is deleted. Errors routed to `onError`. |
 | `onError` | `(err, ctx) => void` | `console.error` | Handler for non-fatal hook errors |
+| `rateLimit` | `object` | `{ enabled: true, limit: 10, windowSeconds: 120, trustProxyHeaders: false }` | Flood/quota protection on `/login` and `/callback`. See [Security](#security). |
 
 ---
 
@@ -278,6 +281,81 @@ Add your client secret as a Workers secret:
 
 ```sh
 wrangler secret put AUTH0_CLIENT_SECRET
+```
+
+---
+
+## Security
+
+See also [SECURITY.md](SECURITY.md) and [THREAT_MODEL.md](THREAT_MODEL.md) for the full threat model.
+
+### Response headers
+
+Every response from `/login`, `/callback`, and `/logout` — success and error paths alike — unconditionally carries:
+
+```
+Cache-Control: no-store
+X-Content-Type-Options: nosniff
+X-Frame-Options: DENY
+Content-Security-Policy: frame-ancestors 'none'
+```
+
+These aren't configurable: every one of these responses carries single-use OAuth flow material or a session cookie, and none of it is ever safe to cache or frame. (Bezzie does not currently support silent-authentication-in-an-iframe flows — if that changes, frame denial on `/login` specifically may need to become configurable.)
+
+The `Content-Security-Policy` line merges `frame-ancestors 'none'` into whatever policy your own middleware already set, rather than replacing it — if you have an app-wide CSP mounted before `auth.routes()`, it survives on these routes too. `frame-ancestors` itself is always forced to `'none'` here regardless of what you set, since that one has no config surface.
+
+### CSP contribution helper
+
+A consuming app that sets its own Content-Security-Policy needs to allow the OAuth redirect to the IdP — commonly `form-action`. Bezzie already knows the real endpoints from OIDC discovery, so it hands you the fragments to merge into your own policy rather than owning your CSP:
+
+```typescript
+const contributions = await auth.cspContributions()
+// { 'form-action': ['https://tenant.auth0.com'], 'connect-src': [], 'frame-src': [] }
+
+app.use('*', async (c, next) => {
+  const csp = {
+    'default-src': ["'self'"],
+    'script-src': ["'self'"],
+    ...contributions,
+  }
+  const header = Object.entries(csp)
+    .map(([directive, sources]) => `${directive} ${sources.join(' ')}`.trim())
+    .join('; ')
+  c.header('Content-Security-Policy', header)
+  await next()
+})
+```
+
+`connect-src` and `frame-src` come back empty — in a correct BFF setup, browser-side code never talks to the IdP directly (the token exchange happens server-side, in `/callback`), so there's nothing to add there by default.
+
+**Also set `Referrer-Policy: strict-origin-when-cross-origin`** (or stricter) on your app's own responses. Bezzie can't do this for you — it never serves your HTML — but it matters here specifically: `/callback?code=...&state=...` contains a single-use authorization code, and a loose referrer policy can leak that URL to third-party subresources loaded during the redirect.
+
+### Rate limiting on auth routes — bounds burst rate, not brute-force protection, not a hard daily cap
+
+Every unauthenticated `GET /login` writes to your session adapter (the PKCE state). Without any limiting, a trivial unauthenticated loop against `/login` would exhaust Cloudflare KV's free-tier 1,000 writes/day in seconds. Bezzie rate-limits `/login` and `/callback` by client IP to bound that burst, on by default:
+
+```typescript
+rateLimit: {
+  enabled: true,           // default
+  limit: 10,               // requests per window per IP
+  windowSeconds: 120,
+  trustProxyHeaders: false, // see below
+}
+```
+
+**Be clear-eyed about what this does and doesn't guarantee.** At the defaults, one IP sustaining exactly the allowed rate for a full day can still drive roughly 7,200 requests — and each allowed request costs up to two adapter writes (this counter, plus the PKCE state), so up to ~14,000 writes/day from a single determined source. That's still well over a 1,000/day free-tier budget. What this bounds is a *burst* — the difference between "exhausted in seconds" and "would take a sustained, easily-detectable effort over hours." It is **not** a hard daily cap. For an actual guarantee, pair it with edge-level protection — [Cloudflare's own Rate Limiting rules](https://developers.cloudflare.com/waf/rate-limiting-rules/) bound the same traffic before it reaches your Worker at all, without touching your adapter's write quota.
+
+It fails open — a counter-store error is logged and the request proceeds, because an auth library that can't authenticate anyone during a storage incident is a worse outage than the flood it defends against. A per-isolate in-memory counter sits in front of the adapter-backed one, so a flood hitting a single isolate is caught for free and never reaches your adapter's write quota.
+
+**IP derivation and `trustProxyHeaders`:** `CF-Connecting-IP` is always trusted (Cloudflare's edge sets it; a client can't forge it). `X-Real-IP`/`X-Forwarded-For` are only consulted when you set `trustProxyHeaders: true` — enable that only behind a proxy you control that strips client-supplied values for those headers, since otherwise a client can set them itself to defeat the limiter entirely. When no trustworthy IP can be found, bezzie skips limiting for that request rather than grouping every such client into one shared bucket (which would otherwise cap your *entire app's* login rate globally).
+
+**This is not credential-stuffing or brute-force protection.** With a hosted IdP (Auth0, Okta, Google, Keycloak), the actual password submission happens on the IdP's own login page — bezzie never sees it, and rate-limiting `/login` does nothing to slow a password-guessing attack against it. Brute-force defense is the IdP's job (e.g. Auth0 Attack Protection, Okta ThreatInsight).
+
+The same limiter is exported for your own routes, keyed on the authenticated user (falling back to IP) rather than IP alone — identity-keying is materially stronger, since IP-only limits break down behind NAT/CGNAT. Each `rateLimiter()` call gets its own counter namespace, so mounting several with different limits never lets one's traffic count against another's:
+
+```typescript
+app.use('/api/*', auth.middleware())
+app.use('/api/*', auth.rateLimiter({ limit: 100, windowSeconds: 60 }))
 ```
 
 ---
@@ -309,7 +387,7 @@ wrangler secret put AUTH0_CLIENT_SECRET
 
 ## Status
 
-v1.2.0 — stable
+v1.3.0 — stable
 
 ---
 

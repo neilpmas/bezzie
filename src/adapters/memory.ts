@@ -1,8 +1,8 @@
 import { Session } from '../session'
-import { SessionAdapter, SessionAdapterFactory, PKCEState } from './types'
+import { SessionAdapter, SessionAdapterFactory, PKCEState, RateLimitRecord } from './types'
 
 interface MemorySession<TUser extends Record<string, unknown> = Record<string, unknown>> {
-  session: Session<TUser> | PKCEState
+  session: Session<TUser> | PKCEState | RateLimitRecord
   expiresAt: number
 }
 
@@ -32,7 +32,7 @@ export class MemoryAdapter<TUser extends Record<string, unknown> = Record<string
     this.lastCleanup = now
   }
 
-  async get(sessionId: string): Promise<Session<TUser> | PKCEState | null> {
+  async get(sessionId: string): Promise<Session<TUser> | PKCEState | RateLimitRecord | null> {
     // Proactive TTL eviction (C6): run at most once per CLEANUP_INTERVAL_MS.
     const now = Date.now()
     if (now - this.lastCleanup > MemoryAdapter.CLEANUP_INTERVAL_MS) {
@@ -50,7 +50,7 @@ export class MemoryAdapter<TUser extends Record<string, unknown> = Record<string
 
   async set(
     sessionId: string,
-    session: Session<TUser> | PKCEState,
+    session: Session<TUser> | PKCEState | RateLimitRecord,
     ttlSeconds: number
   ): Promise<void> {
     this.store.set(sessionId, {

@@ -1,9 +1,10 @@
-import { Hono } from 'hono'
+import { Hono, type Context, type Next } from 'hono'
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
 import * as oauth from 'oauth4webapi'
 import { getAuthorizationServer, type DiscoveryCache } from './discovery'
 import type { Session, PKCEState } from './session'
 import type { ResolvedBezzieConfig } from './index'
+import { checkRateLimit, getClientIp } from './ratelimit'
 
 export function authRoutes<TUser extends Record<string, unknown> = Record<string, unknown>>(
   config: ResolvedBezzieConfig<TUser>,
@@ -14,6 +15,72 @@ export function authRoutes<TUser extends Record<string, unknown> = Record<string
   const secure = config.secureCookies !== false
   const pkceCookieName = secure ? '__Host-pkce-csrf' : 'pkce-csrf'
   const sessionCookieName = config.cookieName ?? (secure ? '__Host-session' : 'session')
+
+  // Every response from this router carries either single-use OAuth flow
+  // material (state, code, cookies) or a session cookie. None of it is ever
+  // safe to cache or frame, and that is not a choice the consuming app gets
+  // to make — so these are unconditional, with no config surface. Registered
+  // first so it wraps every downstream response, including the rate-limit
+  // 429 and the error-path c.text(...) returns below.
+  //
+  // The CSP line merges into whatever policy is already on the response
+  // rather than replacing it outright — an app-wide CSP set via middleware
+  // mounted before this router (the common case) must survive here, not get
+  // wiped by frame-ancestors alone. frame-ancestors itself is still forced
+  // to 'none' unconditionally (any existing frame-ancestors directive from
+  // the app is dropped and replaced), since that's the one thing here with
+  // no config surface. Note this can't defend against an app that sets its
+  // own CSP via middleware wrapping *outside* this router and does so
+  // unconditionally after calling next() — that runs after this middleware
+  // in Hono's onion model and can still clobber it. An app merging its own
+  // CSP the same way (read-then-append, not blind `.set()`) is unaffected.
+  router.use('*', async (c, next) => {
+    await next()
+    c.res.headers.set('Cache-Control', 'no-store')
+    c.res.headers.set('X-Content-Type-Options', 'nosniff')
+    c.res.headers.set('X-Frame-Options', 'DENY')
+
+    const directives = (c.res.headers.get('Content-Security-Policy') ?? '')
+      .split(';')
+      .map((directive) => directive.trim())
+      .filter((directive) => directive.length > 0 && !directive.toLowerCase().startsWith('frame-ancestors'))
+    directives.push("frame-ancestors 'none'")
+    c.res.headers.set('Content-Security-Policy', directives.join('; '))
+  })
+
+  // Flood and quota protection (not brute-force protection — see README
+  // security section) on /login and /callback specifically: those are the
+  // routes that perform an adapter write (the PKCE state) for every
+  // unauthenticated request. /logout only reads/deletes an existing session
+  // and is not the DoS vector this defends against, so it is left
+  // unlimited. Fails open on any counter-store error.
+  if (config.rateLimit?.enabled !== false) {
+    const rateLimitAmount = config.rateLimit?.limit ?? 10
+    const rateLimitWindowSeconds = config.rateLimit?.windowSeconds ?? 120
+    const trustProxyHeaders = config.rateLimit?.trustProxyHeaders ?? false
+    // Namespaced by limit/window so this never collides with a differently
+    // configured limiter sharing the same adapter (e.g. auth.rateLimiter()
+    // on the app's own routes).
+    const bucketPrefix = `auth:${rateLimitAmount}:${rateLimitWindowSeconds}`
+
+    const rateLimitMiddleware = async (c: Context, next: Next) => {
+      const ip = getClientIp(c, trustProxyHeaders)
+      if (!ip) {
+        // No trustworthy IP to key on — skip limiting rather than lumping
+        // every such client into one shared bucket (see getClientIp).
+        return next()
+      }
+      const allowed = await checkRateLimit(config.adapter, `${bucketPrefix}:${ip}`, rateLimitAmount, rateLimitWindowSeconds)
+      if (!allowed) {
+        c.header('Retry-After', String(rateLimitWindowSeconds))
+        return c.text('Too many requests', 429)
+      }
+      return next()
+    }
+
+    router.use(config.routes?.login ?? '/login', rateLimitMiddleware)
+    router.use(config.routes?.callback ?? '/callback', rateLimitMiddleware)
+  }
 
   router.get(config.routes?.login ?? '/login', async (c) => {
     const code_verifier = oauth.generateRandomCodeVerifier()

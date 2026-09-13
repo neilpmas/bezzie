@@ -30,32 +30,61 @@ export interface PKCEState {
 }
 
 /**
+ * A rate-limit counter for a single bucket and window, stored through the
+ * same {@link SessionAdapter} used for sessions and PKCE state — see
+ * `ratelimit.ts` for why counters reuse this store rather than needing a
+ * separate one.
+ */
+export interface RateLimitRecord {
+  /**
+   * Internal type discriminant.
+   */
+  _type: 'ratelimit'
+  /**
+   * Number of requests counted in this window so far.
+   */
+  count: number
+  /**
+   * Start of the counting window, as epoch milliseconds.
+   */
+  windowStart: number
+}
+
+/**
  * Interface for session storage adapters.
+ *
+ * `get`/`set` also carry {@link RateLimitRecord} alongside sessions and PKCE
+ * state. This is a source-compatible widening for the three built-in
+ * adapters (they pass values through without branching on `_type`), and for
+ * any custom adapter written against this interface: `set` accepting a wider
+ * union is always safe for an implementor, and `get` returning a wider union
+ * only matters to callers that switch on `_type` — see `ratelimit.ts` and
+ * `middleware.ts` for where that narrowing happens.
  */
 export interface SessionAdapter<TUser extends Record<string, unknown> = Record<string, unknown>> {
   /**
-   * Retrieves a session or PKCE state by ID.
+   * Retrieves a session, PKCE state, or rate-limit record by key.
    *
-   * @param sessionId Session ID
-   * @returns Session, PKCE state, or null if not found
+   * @param key Session ID, PKCE state key, or rate-limit bucket key
+   * @returns The stored record, or null if not found
    */
-  get(sessionId: string): Promise<Session<TUser> | PKCEState | null>
+  get(key: string): Promise<Session<TUser> | PKCEState | RateLimitRecord | null>
 
   /**
-   * Stores a session or PKCE state.
+   * Stores a session, PKCE state, or rate-limit record.
    *
-   * @param sessionId Session ID
-   * @param session Session or PKCE state
+   * @param key Session ID, PKCE state key, or rate-limit bucket key
+   * @param value Session, PKCE state, or rate-limit record
    * @param ttlSeconds Time-to-live in seconds
    */
-  set(sessionId: string, session: Session<TUser> | PKCEState, ttlSeconds: number): Promise<void>
+  set(key: string, value: Session<TUser> | PKCEState | RateLimitRecord, ttlSeconds: number): Promise<void>
 
   /**
-   * Deletes a session or PKCE state.
+   * Deletes a session, PKCE state, or rate-limit record.
    *
-   * @param sessionId Session ID
+   * @param key Session ID, PKCE state key, or rate-limit bucket key
    */
-  delete(sessionId: string): Promise<void>
+  delete(key: string): Promise<void>
 }
 
 /**
