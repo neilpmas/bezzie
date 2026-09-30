@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { createBezzie, MemoryAdapter, adapterRateLimitStore, cloudflareRateLimitStore, type SessionAdapter, type RateLimitStore } from '../src'
-import { checkRateLimit } from '../src/ratelimit'
+import { checkRateLimit, describeWait } from '../src/ratelimit'
 import type { DiscoveryCache } from '../src/discovery'
 import * as oauth from 'oauth4webapi'
 import { Hono } from 'hono'
@@ -72,11 +72,21 @@ describe('checkRateLimit (unit)', () => {
   })
 })
 
+describe('describeWait', () => {
+  it('reads whole minutes as minutes and everything else as seconds', () => {
+    expect(describeWait(60)).toBe('a minute')
+    expect(describeWait(120)).toBe('2 minutes')
+    expect(describeWait(30)).toBe('30 seconds')
+    expect(describeWait(90)).toBe('90 seconds')
+  })
+})
+
 describe('pluggable RateLimitStore', () => {
   it('fails open when a custom store throws', async () => {
     const throwingStore: RateLimitStore = { hit: vi.fn().mockRejectedValue(new Error('store down')) }
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
 
+    // noinspection JSVoidFunctionReturnValueUsed
     expect(await checkRateLimit(throwingStore, 'unit-test-custom-throws', 1, 60)).toBe(true)
     expect(consoleError).toHaveBeenCalled()
     consoleError.mockRestore()
@@ -94,6 +104,7 @@ describe('pluggable RateLimitStore', () => {
     const store: RateLimitStore = { hit: vi.fn().mockResolvedValue(true) }
 
     await checkRateLimit(store, 'unit-test-custom-prefilter', 1, 60)
+    // noinspection JSVoidFunctionReturnValueUsed
     expect(await checkRateLimit(store, 'unit-test-custom-prefilter', 1, 60)).toBe(false)
     expect(store.hit).toHaveBeenCalledTimes(1)
   })
@@ -192,7 +203,9 @@ describe('Rate limiting on /login and /callback', () => {
       authorization_endpoint: 'https://test.auth0.com/authorize',
     } as oauth.AuthorizationServer)
 
+    // noinspection JSVoidFunctionReturnValueUsed
     const auth = buildAuth(2)
+    // noinspection JSVoidFunctionReturnValueUsed
     const app = auth.routes()
     const ip = '203.0.113.5'
 
@@ -204,6 +217,7 @@ describe('Rate limiting on /login and /callback', () => {
     expect(res2.status).toBe(302)
     expect(res3.status).toBe(429)
     expect(res3.headers.get('Retry-After')).toBe('60')
+    expect(await res3.text()).toBe('Too many sign-in attempts. Please wait a minute and try again.')
   })
 
   it('does not limit /logout', async () => {
@@ -213,6 +227,7 @@ describe('Rate limiting on /login and /callback', () => {
     } as oauth.AuthorizationServer)
 
     const auth = buildAuth(1)
+    // noinspection JSVoidFunctionReturnValueUsed
     const app = auth.routes()
     const ip = '203.0.113.6'
 
@@ -280,6 +295,7 @@ describe('auth.rateLimiter() — exported reusable primitive', () => {
     expect(res2.status).toBe(200)
     expect(res3.status).toBe(429)
     expect(res3.headers.get('Retry-After')).toBe('60')
+    expect(await res3.text()).toBe('Too many requests. Please wait a minute and try again.')
   })
 
   it('falls back to client IP when no user is set', async () => {
