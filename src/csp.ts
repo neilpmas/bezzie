@@ -30,7 +30,7 @@ export type CspContributions = Record<string, string[]>
  *   might need them would make every consumer's CSP weaker than it needs to
  *   be for no reason.
  */
-export async function cspContributions<TUser extends Record<string, unknown> = Record<string, unknown>>(
+export async function cspContributions<TUser extends object = Record<string, unknown>>(
   config: ResolvedBezzieConfig<TUser>,
   cache: DiscoveryCache
 ): Promise<CspContributions> {

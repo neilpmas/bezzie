@@ -6,7 +6,7 @@ import type { Session, PKCEState } from './session'
 import type { ResolvedBezzieConfig } from './index'
 import { adapterRateLimitStore, checkRateLimit, describeWait, getClientIp } from './ratelimit'
 
-export function authRoutes<TUser extends Record<string, unknown> = Record<string, unknown>>(
+export function authRoutes<TUser extends object = Record<string, unknown>>(
   config: ResolvedBezzieConfig<TUser>,
   cache: DiscoveryCache
 ) {

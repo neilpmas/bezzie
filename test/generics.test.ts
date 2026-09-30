@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { Hono } from 'hono'
-import { createBezzie, MemoryAdapter, type Variables } from '../src'
+import { createBezzie, MemoryAdapter, memoryAdapter, type Variables } from '../src'
+import { adapterFactory } from './helpers'
 import * as oauth from 'oauth4webapi'
 
 // Mock oauth4webapi
@@ -33,7 +34,7 @@ describe('Generics', () => {
       issuer: 'https://test.auth0.com',
       clientId: 'test-client-id',
       clientSecret: 'test-client-secret',
-      adapter: () => adapter,
+      adapter: adapterFactory(adapter),
       baseUrl: 'https://app.test.com',
     }
 
@@ -79,5 +80,34 @@ describe('Generics', () => {
     expect(res.status).toBe(200)
     const data = await res.json()
     expect(data).toEqual({ role: 'admin', username: 'jdoe' })
+  })
+
+  // Regression: TUser used to require an index signature, which rejected
+  // `interface` user types. Enforced at compile time by `npm run typecheck:test`.
+  it('accepts an interface user type with the built-in adapter factory', () => {
+    interface AppUser {
+      sub: string
+      email?: string
+      role: 'admin' | 'member'
+    }
+
+    const auth = createBezzie<AppUser>({
+      issuer: 'https://test.auth0.com',
+      clientId: 'test-client-id',
+      clientSecret: 'test-client-secret',
+      baseUrl: 'https://app.test.com',
+      adapter: memoryAdapter(),
+      mapClaims: (claims) => claims as AppUser,
+      onLogin: ({ user }) => {
+        const role: 'admin' | 'member' = user.role
+        void role
+      },
+    })
+
+    const app = new Hono<{ Variables: Variables<AppUser> }>()
+    app.use('/api/*', auth.middleware())
+    app.get('/api/role', (c) => c.json({ role: c.var.user.role }))
+
+    expect(app).toBeDefined()
   })
 })

@@ -25,7 +25,7 @@ export interface RedisClient {
  * }))
  * ```
  */
-export class RedisAdapter<TUser extends Record<string, unknown> = Record<string, unknown>>
+export class RedisAdapter<TUser extends object = Record<string, unknown>>
   implements SessionAdapter<TUser>
 {
   constructor(private redis: RedisClient) {}
