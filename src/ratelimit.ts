@@ -131,6 +131,19 @@ export async function checkRateLimit(
   }
 }
 
+/**
+ * Human-readable wait for the 429 body, consistent with the `Retry-After`
+ * header: whole minutes read as "a minute" / "2 minutes", anything else in
+ * seconds.
+ */
+export function describeWait(windowSeconds: number): string {
+  if (windowSeconds >= 60 && windowSeconds % 60 === 0) {
+    const minutes = windowSeconds / 60
+    return minutes === 1 ? 'a minute' : `${minutes} minutes`
+  }
+  return `${windowSeconds} seconds`
+}
+
 let warnedNoClientIp = false
 
 function warnNoClientIp(): void {
@@ -243,7 +256,7 @@ export function createRateLimiter(defaultStore: RateLimitStore, options: RateLim
     const allowed = await checkRateLimit(store, `${bucketPrefix}:${key}`, limit, windowSeconds)
     if (!allowed) {
       c.header('Retry-After', String(windowSeconds))
-      return c.text('Too many requests', 429)
+      return c.text(`Too many requests. Please wait ${describeWait(windowSeconds)} and try again.`, 429)
     }
     return next()
   }

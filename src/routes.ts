@@ -4,7 +4,7 @@ import * as oauth from 'oauth4webapi'
 import { getAuthorizationServer, type DiscoveryCache } from './discovery'
 import type { Session, PKCEState } from './session'
 import type { ResolvedBezzieConfig } from './index'
-import { adapterRateLimitStore, checkRateLimit, getClientIp } from './ratelimit'
+import { adapterRateLimitStore, checkRateLimit, describeWait, getClientIp } from './ratelimit'
 
 export function authRoutes<TUser extends Record<string, unknown> = Record<string, unknown>>(
   config: ResolvedBezzieConfig<TUser>,
@@ -74,7 +74,7 @@ export function authRoutes<TUser extends Record<string, unknown> = Record<string
       const allowed = await checkRateLimit(rateLimitStore, `${bucketPrefix}:${ip}`, rateLimitAmount, rateLimitWindowSeconds)
       if (!allowed) {
         c.header('Retry-After', String(rateLimitWindowSeconds))
-        return c.text('Too many requests', 429)
+        return c.text(`Too many sign-in attempts. Please wait ${describeWait(rateLimitWindowSeconds)} and try again.`, 429)
       }
       return next()
     }
