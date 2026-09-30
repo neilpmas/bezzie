@@ -12,7 +12,7 @@ import {
 } from './middleware'
 import { createDiscoveryCache, type DiscoveryCache } from './discovery'
 import { cspContributions, type CspContributions } from './csp'
-import { createRateLimiter, type RateLimiterOptions } from './ratelimit'
+import { adapterRateLimitStore, createRateLimiter, type RateLimiterOptions, type RateLimitStore } from './ratelimit'
 
 import type { SessionAdapter, SessionAdapterFactory } from './session'
 import { ConfigError } from './errors'
@@ -253,6 +253,18 @@ export interface BezzieConfig<TUser extends Record<string, unknown> = Record<str
      * @default false
      */
     trustProxyHeaders?: boolean
+    /**
+     * Where the cross-isolate rate-limit counters live. Defaults to counting
+     * through the session `adapter` (portable, zero extra setup) — but
+     * hot counters are a weak fit for eventually consistent stores like
+     * Cloudflare KV. On Workers, prefer `cloudflareRateLimitStore()` wrapping
+     * a Rate Limiting binding. The in-memory pre-filter still runs in front
+     * of any store. Applies to bezzie's own `/login` and `/callback` only:
+     * `auth.rateLimiter()` keeps counting through the session adapter unless
+     * you pass its own `store`, so a fixed-policy store sized for login
+     * doesn't silently cap your API routes.
+     */
+    store?: RateLimitStore
   }
 }
 
@@ -388,13 +400,14 @@ function createBezzie<TUser extends Record<string, unknown> = Record<string, unk
     middleware: () => middleware(resolvedConfig, cache),
     optionalMiddleware: () => optionalMiddleware(resolvedConfig, cache),
     cspContributions: () => cspContributions(resolvedConfig, cache),
-    rateLimiter: (options: RateLimiterOptions) => createRateLimiter(resolvedConfig.adapter, options),
+    rateLimiter: (options: RateLimiterOptions) => createRateLimiter(adapterRateLimitStore(resolvedConfig.adapter), options),
     cache,
   } as Bezzie<TUser> & { cache: DiscoveryCache }
 }
 
 export { createBezzie, middleware, optionalMiddleware }
-export { cloudflareKVAdapter } from './adapters/cloudflare-kv'
+export { cloudflareKVAdapter, cloudflareRateLimitStore } from './adapters/cloudflare-kv'
+export type { CloudflareRateLimitBinding } from './adapters/cloudflare-kv'
 export { redisAdapter } from './adapters/redis'
 export { memoryAdapter } from './adapters/memory'
 export type {
@@ -409,7 +422,8 @@ export type {
 export type { SessionAdapter, SessionAdapterFactory, PKCEState, Session, StoredSession, RateLimitRecord } from './session'
 export { CloudflareKVAdapter, RedisAdapter, MemoryAdapter } from './session'
 export type { CspContributions } from './csp'
-export type { RateLimiterOptions } from './ratelimit'
+export type { RateLimiterOptions, RateLimitStore } from './ratelimit'
+export { adapterRateLimitStore } from './ratelimit'
 export {
   BezzieError,
   DiscoveryError,
