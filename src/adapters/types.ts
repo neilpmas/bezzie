@@ -61,7 +61,7 @@ export interface RateLimitRecord {
  * only matters to callers that switch on `_type` — see `ratelimit.ts` and
  * `middleware.ts` for where that narrowing happens.
  */
-export interface SessionAdapter<TUser extends Record<string, unknown> = Record<string, unknown>> {
+export interface SessionAdapter<TUser extends object = Record<string, unknown>> {
   /**
    * Retrieves a session, PKCE state, or rate-limit record by key.
    *

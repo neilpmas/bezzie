@@ -12,7 +12,7 @@ import type { ResolvedBezzieConfig } from './index'
 /**
  * Hono context variables guaranteed to be present in routes protected by `middleware()`.
  */
-export type AuthenticatedVariables<TUser extends Record<string, unknown> = Record<string, unknown>> = {
+export type AuthenticatedVariables<TUser extends object = Record<string, unknown>> = {
   /**
    * The authenticated user's information.
    */
@@ -26,7 +26,7 @@ export type AuthenticatedVariables<TUser extends Record<string, unknown> = Recor
 /**
  * Hono context variables that may be present in routes using `optionalMiddleware()`.
  */
-export type OptionalVariables<TUser extends Record<string, unknown> = Record<string, unknown>> = {
+export type OptionalVariables<TUser extends object = Record<string, unknown>> = {
   /**
    * The authenticated user's information, if a valid session exists.
    */
@@ -40,12 +40,12 @@ export type OptionalVariables<TUser extends Record<string, unknown> = Record<str
 /**
  * Alias for `AuthenticatedVariables` — the common case for protected routes.
  */
-export type Variables<TUser extends Record<string, unknown> = Record<string, unknown>> = AuthenticatedVariables<TUser>
+export type Variables<TUser extends object = Record<string, unknown>> = AuthenticatedVariables<TUser>
 
 /**
  * Context passed to the `onLogin` lifecycle hook.
  */
-export interface LoginHookContext<TUser extends Record<string, unknown> = Record<string, unknown>> {
+export interface LoginHookContext<TUser extends object = Record<string, unknown>> {
   user: Session<TUser>['user']
   sessionId: string
   tokens: { accessToken: string; expiresAt: number }
@@ -56,7 +56,7 @@ export interface LoginHookContext<TUser extends Record<string, unknown> = Record
 /**
  * Context passed to the `onRefresh` lifecycle hook.
  */
-export interface RefreshHookContext<TUser extends Record<string, unknown> = Record<string, unknown>> {
+export interface RefreshHookContext<TUser extends object = Record<string, unknown>> {
   user: Session<TUser>['user']
   sessionId: string
   previousExpiresAt: number
@@ -67,7 +67,7 @@ export interface RefreshHookContext<TUser extends Record<string, unknown> = Reco
 /**
  * Context passed to the `onLogout` lifecycle hook.
  */
-export interface LogoutHookContext<TUser extends Record<string, unknown> = Record<string, unknown>> {
+export interface LogoutHookContext<TUser extends object = Record<string, unknown>> {
   user: Session<TUser>['user']
   sessionId: string
   c: Context
@@ -81,12 +81,12 @@ export interface HookErrorContext {
   c: Context
 }
 
-type AuthResult<TUser extends Record<string, unknown> = Record<string, unknown>> =
+type AuthResult<TUser extends object = Record<string, unknown>> =
   | { type: 'authenticated'; user: Session<TUser>['user']; accessToken: string }
   | { type: 'unauthenticated' }
   | { type: 'expired' }
 
-async function authenticate<TUser extends Record<string, unknown> = Record<string, unknown>>(
+async function authenticate<TUser extends object = Record<string, unknown>>(
   c: Context,
   config: ResolvedBezzieConfig<TUser>,
   cache: DiscoveryCache
@@ -213,7 +213,7 @@ async function authenticate<TUser extends Record<string, unknown> = Record<strin
   return { type: 'authenticated', user: session.user, accessToken: session.accessToken }
 }
 
-export function middleware<TUser extends Record<string, unknown> = Record<string, unknown>>(
+export function middleware<TUser extends object = Record<string, unknown>>(
   config: ResolvedBezzieConfig<TUser>,
   cache: DiscoveryCache
 ): MiddlewareHandler<{ Variables: AuthenticatedVariables<TUser> }> {
@@ -240,7 +240,7 @@ export function middleware<TUser extends Record<string, unknown> = Record<string
 /**
  * Middleware that sets user context if a session exists but always calls next().
  */
-export function optionalMiddleware<TUser extends Record<string, unknown> = Record<string, unknown>>(
+export function optionalMiddleware<TUser extends object = Record<string, unknown>>(
   config: ResolvedBezzieConfig<TUser>,
   cache: DiscoveryCache
 ): MiddlewareHandler<{ Variables: OptionalVariables<TUser> }> {

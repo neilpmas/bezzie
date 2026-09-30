@@ -20,7 +20,7 @@ import { ConfigError } from './errors'
 /**
  * Configuration for Bezzie.
  */
-export interface BezzieConfig<TUser extends Record<string, unknown> = Record<string, unknown>> {
+export interface BezzieConfig<TUser extends object = Record<string, unknown>> {
   /**
    * Your OIDC provider issuer URL (e.g. `https://tenant.auth0.com`).
    */
@@ -274,7 +274,7 @@ export interface BezzieConfig<TUser extends Record<string, unknown> = Record<str
  * Internal — routes and middleware use this so they can call `config.adapter.get(...)`
  * etc. directly, rather than dealing with a factory function.
  */
-export type ResolvedBezzieConfig<TUser extends Record<string, unknown> = Record<string, unknown>> =
+export type ResolvedBezzieConfig<TUser extends object = Record<string, unknown>> =
   Omit<BezzieConfig<TUser>, 'adapter'> & { adapter: SessionAdapter<TUser> }
 
 /**
@@ -324,7 +324,7 @@ export function defineAdapter(factory: SessionAdapterFactory): SessionAdapterFac
 /**
  * The main Bezzie interface.
  */
-export interface Bezzie<TUser extends Record<string, unknown> = Record<string, unknown>> {
+export interface Bezzie<TUser extends object = Record<string, unknown>> {
   /**
    * Returns a Hono app containing the auth routes (/login, /callback, /logout).
    */
@@ -363,7 +363,7 @@ export interface Bezzie<TUser extends Record<string, unknown> = Record<string, u
  * @returns Bezzie instance
  * @throws {ConfigError} if required configuration is missing or invalid
  */
-function createBezzie<TUser extends Record<string, unknown> = Record<string, unknown>>(
+function createBezzie<TUser extends object = Record<string, unknown>>(
   config: BezzieConfig<TUser>
 ): Bezzie<TUser> {
   const required = ['issuer', 'clientId', 'clientSecret', 'adapter', 'baseUrl']
@@ -389,7 +389,8 @@ function createBezzie<TUser extends Record<string, unknown> = Record<string, unk
     }
   }
 
-  const adapter = config.adapter<TUser>()
+  // SessionAdapterFactory keeps its original constraint so existing custom factories still type-check.
+  const adapter: SessionAdapter<TUser> = config.adapter<TUser & Record<string, unknown>>()
   const resolvedConfig: ResolvedBezzieConfig<TUser> = { ...config, adapter }
 
   const cache = createDiscoveryCache()

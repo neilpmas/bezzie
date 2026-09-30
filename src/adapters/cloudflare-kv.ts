@@ -3,7 +3,7 @@ import { PKCEState, RateLimitRecord, SessionAdapter, SessionAdapterFactory } fro
 import { SessionStoreError } from '../errors'
 import type { RateLimitStore } from '../ratelimit'
 
-export class CloudflareKVAdapter<TUser extends Record<string, unknown> = Record<string, unknown>>
+export class CloudflareKVAdapter<TUser extends object = Record<string, unknown>>
   implements SessionAdapter<TUser>
 {
   constructor(private kv: KVNamespace) {}

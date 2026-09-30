@@ -60,7 +60,7 @@ export interface RateLimitStore {
  * key). Prefer a purpose-built store (e.g. `cloudflareRateLimitStore`) where
  * one is available.
  */
-export function adapterRateLimitStore(adapter: SessionAdapter): RateLimitStore {
+export function adapterRateLimitStore<TUser extends object = Record<string, unknown>>(adapter: SessionAdapter<TUser>): RateLimitStore {
   return {
     async hit(bucket, limit, windowSeconds) {
       const windowStart = windowStartFor(windowSeconds, Date.now())

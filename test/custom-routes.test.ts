@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createBezzie, MemoryAdapter, type PKCEState } from '../src'
+import { adapterFactory } from './helpers'
 import type { DiscoveryCache } from '../src/discovery'
 import * as oauth from 'oauth4webapi'
 import { Hono } from 'hono'
@@ -23,7 +24,7 @@ describe('Custom Routes', () => {
     issuer: 'https://test.auth0.com',
     clientId: 'test-client-id',
     clientSecret: 'test-client-secret',
-    adapter: () => adapter,
+    adapter: adapterFactory(adapter),
     baseUrl: 'https://app.test.com',
     routes: {
       login: '/custom-login',

@@ -1,12 +1,12 @@
 import { Session } from '../session'
 import { SessionAdapter, SessionAdapterFactory, PKCEState, RateLimitRecord } from './types'
 
-interface MemorySession<TUser extends Record<string, unknown> = Record<string, unknown>> {
+interface MemorySession<TUser extends object = Record<string, unknown>> {
   session: Session<TUser> | PKCEState | RateLimitRecord
   expiresAt: number
 }
 
-export class MemoryAdapter<TUser extends Record<string, unknown> = Record<string, unknown>>
+export class MemoryAdapter<TUser extends object = Record<string, unknown>>
   implements SessionAdapter<TUser>
 {
   private store = new Map<string, MemorySession<TUser>>()

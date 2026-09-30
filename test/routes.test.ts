@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { createBezzie, MemoryAdapter, type PKCEState, type Session } from '../src'
+import { adapterFactory } from './helpers'
 import type { DiscoveryCache } from '../src/discovery'
 import * as oauth from 'oauth4webapi'
 
@@ -23,7 +24,7 @@ describe('OAuth Routes', () => {
     clientId: 'test-client-id',
     clientSecret: 'test-client-secret',
     audience: 'https://api.test.com',
-    adapter: () => adapter,
+    adapter: adapterFactory(adapter),
     baseUrl: 'https://app.test.com',
     // Rate limiting is covered in its own test file — disabled here so the
     // many rapid same-IP requests this file makes don't trip it.
@@ -364,7 +365,7 @@ describe('OAuth Routes', () => {
 
     it('uses defaultReturnTo when no returnTo in PKCE state', async () => {
       const localAdapter = new MemoryAdapter()
-      const localAuth = createBezzie({ ...config, adapter: () => localAdapter, defaultReturnTo: '/dashboard' })
+      const localAuth = createBezzie({ ...config, adapter: adapterFactory(localAdapter), defaultReturnTo: '/dashboard' })
       const localApp = localAuth.routes()
 
       const state = 'test-state-default-ret'
@@ -404,7 +405,7 @@ describe('OAuth Routes', () => {
 
     it('explicit returnTo takes precedence over defaultReturnTo', async () => {
       const localAdapter = new MemoryAdapter()
-      const localAuth = createBezzie({ ...config, adapter: () => localAdapter, defaultReturnTo: '/dashboard' })
+      const localAuth = createBezzie({ ...config, adapter: adapterFactory(localAdapter), defaultReturnTo: '/dashboard' })
       const localApp = localAuth.routes()
 
       const state = 'test-state-override-ret'
@@ -446,7 +447,7 @@ describe('OAuth Routes', () => {
     it('calls onLogin hook with correct context after successful login', async () => {
       const onLogin = vi.fn()
       const localAdapter = new MemoryAdapter()
-      const localAuth = createBezzie({ ...config, adapter: () => localAdapter, onLogin })
+      const localAuth = createBezzie({ ...config, adapter: adapterFactory(localAdapter), onLogin })
       const localApp = localAuth.routes()
 
       const state = 'test-state-onlogin'
@@ -495,7 +496,7 @@ describe('OAuth Routes', () => {
     it('onLogin throwing causes 500 and cleans up session', async () => {
       const onLogin = vi.fn().mockRejectedValue(new Error('hook boom'))
       const localAdapter = new MemoryAdapter()
-      const localAuth = createBezzie({ ...config, adapter: () => localAdapter, onLogin })
+      const localAuth = createBezzie({ ...config, adapter: adapterFactory(localAdapter), onLogin })
       const localApp = localAuth.routes()
 
       const state = 'test-state-onlogin-fail'
@@ -544,7 +545,7 @@ describe('OAuth Routes', () => {
 
     it('mapClaims not provided — session.user matches raw claims (unchanged behaviour)', async () => {
       const localAdapter = new MemoryAdapter()
-      const localAuth = createBezzie({ ...config, adapter: () => localAdapter })
+      const localAuth = createBezzie({ ...config, adapter: adapterFactory(localAdapter) })
       const localApp = localAuth.routes()
 
       const state = 'test-state-mapclaims-none'
@@ -600,7 +601,7 @@ describe('OAuth Routes', () => {
       const localAdapter = new MemoryAdapter()
       const localAuth = createBezzie<MyUser>({
         ...config,
-        adapter: () => localAdapter,
+        adapter: adapterFactory(localAdapter),
         mapClaims,
       })
       const localApp = localAuth.routes()
@@ -654,7 +655,7 @@ describe('OAuth Routes', () => {
       const localAdapter = new MemoryAdapter()
       const localAuth = createBezzie({
         ...config,
-        adapter: () => localAdapter,
+        adapter: adapterFactory(localAdapter),
         mapClaims,
       })
       const localApp = localAuth.routes()
@@ -867,7 +868,7 @@ describe('OAuth Routes', () => {
 
       const onLogout = vi.fn()
       const localAdapter = new MemoryAdapter()
-      const localAuth = createBezzie({ ...config, adapter: () => localAdapter, onLogout })
+      const localAuth = createBezzie({ ...config, adapter: adapterFactory(localAdapter), onLogout })
       const localApp = localAuth.routes()
 
       const sessionId = 'logout-hook-session'
@@ -912,7 +913,7 @@ describe('OAuth Routes', () => {
       const onLogout = vi.fn().mockRejectedValue(hookErr)
       const onError = vi.fn()
       const localAdapter = new MemoryAdapter()
-      const localAuth = createBezzie({ ...config, adapter: () => localAdapter, onLogout, onError })
+      const localAuth = createBezzie({ ...config, adapter: adapterFactory(localAdapter), onLogout, onError })
       const localApp = localAuth.routes()
 
       const sessionId = 'logout-err-session'
@@ -996,7 +997,7 @@ describe('OAuth Routes', () => {
     const insecureConfig = {
       ...config,
       secureCookies: false,
-      adapter: () => insecureAdapter,
+      adapter: adapterFactory(insecureAdapter),
     }
     const insecureAuth = createBezzie(insecureConfig)
     const insecureApp = insecureAuth.routes()

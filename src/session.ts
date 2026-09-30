@@ -1,7 +1,7 @@
 /**
  * Represents a user session.
  */
-export interface Session<TUser extends Record<string, unknown> = Record<string, unknown>> {
+export interface Session<TUser extends object = Record<string, unknown>> {
   /**
    * Internal type discriminant.
    */
@@ -49,6 +49,6 @@ export interface Session<TUser extends Record<string, unknown> = Record<string, 
  * is the same shape — the alias exists so callers can write intent-revealing
  * types like `adapter.get(id) as StoredSession<MyUser> | null`.
  */
-export type StoredSession<TUser extends Record<string, unknown> = Record<string, unknown>> = Session<TUser>
+export type StoredSession<TUser extends object = Record<string, unknown>> = Session<TUser>
 
 export * from './adapters'
