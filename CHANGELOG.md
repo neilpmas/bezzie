@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.4.0](https://github.com/neilpmas/bezzie/compare/v1.3.0...v1.4.0) (2026-09-30)
+
+
+### Features
+
+* pluggable rate-limit store, with a Cloudflare Rate Limiting binding store ([cf1cfa3](https://github.com/neilpmas/bezzie/commit/cf1cfa32fccda937513e04aa72edcead87fba9cd))
+* pluggable rate-limit store, with a Cloudflare Rate Limiting binding store ([0f05c25](https://github.com/neilpmas/bezzie/commit/0f05c254183efac790a93b14571bf71d86ea89d4))
+
 ## [1.3.0](https://github.com/neilpmas/bezzie/compare/v1.2.0...v1.3.0) (2026-09-13)
 
 
