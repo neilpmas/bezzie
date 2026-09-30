@@ -2,7 +2,7 @@
 
 **Your BFF's BFF.** OAuth for Cloudflare Workers + Hono, done the safe way.
 
-If you followed Auth0's SPA guide, your access token lives in the browser — in memory, in a Web Worker, or in localStorage. Any script that runs on your page can reach it. That's not a criticism of Auth0; it's just the default SPA pattern, and it's the one [BCP 212](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-browser-based-apps) now recommends against.
+If you followed Auth0's SPA guide, your access token lives in the browser — in memory, in a Web Worker, or in localStorage. Any script that runs on your page can reach it. That's not a criticism of Auth0; it's just the default SPA pattern, and it's the one OAuth 2.0 for Browser-Based Applications ([RFC 10017](https://www.rfc-editor.org/rfc/rfc10017), part of BCP 212) now recommends against.
 
 Bezzie moves the OAuth flow into your Cloudflare Worker. Tokens stay server-side in KV. The browser gets an `HttpOnly; Secure; SameSite=Lax` session cookie — unreadable by JavaScript, unavailable to XSS. Your frontend code gets simpler, not more complicated.
 
@@ -58,7 +58,7 @@ app.use('/api/*', auth.middleware())
 app.get('/api/me', (c) => c.json(c.var.user))
 ```
 
-Done. Your app now has BCP212-compliant BFF auth.
+Done. Your app now has RFC 10017-aligned BFF auth.
 
 ---
 

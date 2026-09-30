@@ -21,7 +21,7 @@ You can expect:
 
 ## Threat Model
 
-Bezzie implements the [OAuth 2.0 for Browser-Based Apps (BCP212)](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-browser-based-apps) pattern.
+Bezzie implements the Backend for Frontend (BFF) pattern from OAuth 2.0 for Browser-Based Applications ([RFC 10017](https://www.rfc-editor.org/rfc/rfc10017), part of BCP 212).
 
 **What bezzie protects against:**
 - JWTs in the browser (tokens are stored server-side in KV, never sent to the client)
