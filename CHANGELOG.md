@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.4.1](https://github.com/neilpmas/bezzie/compare/v1.4.0...v1.4.1) (2026-09-30)
+
+
+### Bug Fixes
+
+* accept interface types for the TUser generic ([a860065](https://github.com/neilpmas/bezzie/commit/a860065941374e4ea2b025d14a43df3b3b5cf80a))
+* say what happened and how long to wait when rate limited ([2031b40](https://github.com/neilpmas/bezzie/commit/2031b4047c8de1a4bf444aca1149d690907c2e81))
+* say what happened and how long to wait when rate limited ([8121729](https://github.com/neilpmas/bezzie/commit/8121729f981cd66bb1d30f4f85ff6ad841bb4849))
+
 ## [1.4.0](https://github.com/neilpmas/bezzie/compare/v1.3.0...v1.4.0) (2026-09-30)
 
 
