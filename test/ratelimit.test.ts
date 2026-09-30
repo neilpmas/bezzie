@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { createBezzie, MemoryAdapter, adapterRateLimitStore, cloudflareRateLimitStore, type SessionAdapter, type RateLimitStore } from '../src'
+import { adapterFactory } from './helpers'
 import { checkRateLimit, describeWait } from '../src/ratelimit'
 import type { DiscoveryCache } from '../src/discovery'
 import * as oauth from 'oauth4webapi'
@@ -132,7 +133,7 @@ describe('pluggable RateLimitStore', () => {
       issuer: 'https://test.auth0.com',
       clientId: 'id',
       clientSecret: 'secret',
-      adapter: () => adapter,
+      adapter: adapterFactory(adapter),
       baseUrl: 'https://app.test.com',
       rateLimit: { store },
     })
@@ -187,7 +188,7 @@ describe('Rate limiting on /login and /callback', () => {
       issuer: 'https://test.auth0.com',
       clientId: 'id',
       clientSecret: 'secret',
-      adapter: () => adapter,
+      adapter: adapterFactory(adapter),
       baseUrl: 'https://app.test.com',
       rateLimit: { limit, windowSeconds: 60 },
     })
@@ -253,7 +254,7 @@ describe('Rate limiting on /login and /callback', () => {
       issuer: 'https://test.auth0.com',
       clientId: 'id',
       clientSecret: 'secret',
-      adapter: () => adapter,
+      adapter: adapterFactory(adapter),
       baseUrl: 'https://app.test.com',
       rateLimit: { enabled: false },
     })
