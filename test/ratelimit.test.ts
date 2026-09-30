@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { createBezzie, MemoryAdapter, type SessionAdapter } from '../src'
+import { createBezzie, MemoryAdapter, adapterRateLimitStore, cloudflareRateLimitStore, type SessionAdapter, type RateLimitStore } from '../src'
 import { checkRateLimit } from '../src/ratelimit'
 import type { DiscoveryCache } from '../src/discovery'
 import * as oauth from 'oauth4webapi'
@@ -19,9 +19,26 @@ describe('checkRateLimit (unit)', () => {
     const adapter = new MemoryAdapter()
     const bucket = 'unit-test-bucket-1'
 
-    expect(await checkRateLimit(adapter, bucket, 2, 60)).toBe(true)
-    expect(await checkRateLimit(adapter, bucket, 2, 60)).toBe(true)
-    expect(await checkRateLimit(adapter, bucket, 2, 60)).toBe(false)
+    const store = adapterRateLimitStore(adapter)
+    expect(await checkRateLimit(store, bucket, 2, 60)).toBe(true)
+    expect(await checkRateLimit(store, bucket, 2, 60)).toBe(true)
+    expect(await checkRateLimit(store, bucket, 2, 60)).toBe(false)
+  })
+
+  it('counts through the adapter store, and stops writing once the limit is reached', async () => {
+    const adapter = new MemoryAdapter()
+    const setSpy = vi.spyOn(adapter, 'set')
+    const store = adapterRateLimitStore(adapter)
+
+    // limit 3, but ask the store directly so the in-memory tier can't answer for it
+    expect(await store.hit('unit-test-store-writes', 3, 60)).toBe(true)
+    expect(await store.hit('unit-test-store-writes', 3, 60)).toBe(true)
+    expect(await store.hit('unit-test-store-writes', 3, 60)).toBe(true)
+    expect(await store.hit('unit-test-store-writes', 3, 60)).toBe(false)
+    expect(await store.hit('unit-test-store-writes', 3, 60)).toBe(false)
+
+    // Only requests under the limit are written; rejections are read-only.
+    expect(setSpy).toHaveBeenCalledTimes(3)
   })
 
   it('fails open when the adapter throws on read', async () => {
@@ -32,7 +49,7 @@ describe('checkRateLimit (unit)', () => {
     }
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
 
-    const allowed = await checkRateLimit(throwingAdapter, 'unit-test-bucket-fail-open-get', 1, 60)
+    const allowed = await checkRateLimit(adapterRateLimitStore(throwingAdapter), 'unit-test-bucket-fail-open-get', 1, 60)
 
     expect(allowed).toBe(true)
     expect(consoleError).toHaveBeenCalled()
@@ -47,11 +64,108 @@ describe('checkRateLimit (unit)', () => {
     }
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
 
-    const allowed = await checkRateLimit(throwingAdapter, 'unit-test-bucket-fail-open-set', 1, 60)
+    const allowed = await checkRateLimit(adapterRateLimitStore(throwingAdapter), 'unit-test-bucket-fail-open-set', 1, 60)
 
     expect(allowed).toBe(true)
     expect(consoleError).toHaveBeenCalled()
     consoleError.mockRestore()
+  })
+})
+
+describe('pluggable RateLimitStore', () => {
+  it('fails open when a custom store throws', async () => {
+    const throwingStore: RateLimitStore = { hit: vi.fn().mockRejectedValue(new Error('store down')) }
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    expect(await checkRateLimit(throwingStore, 'unit-test-custom-throws', 1, 60)).toBe(true)
+    expect(consoleError).toHaveBeenCalled()
+    consoleError.mockRestore()
+  })
+
+  it('consults the custom store after the in-memory pre-filter allows', async () => {
+    const store: RateLimitStore = { hit: vi.fn().mockResolvedValue(false) }
+
+    // Store says no, so the request is rejected even though memory would allow it.
+    expect(await checkRateLimit(store, 'unit-test-custom-denies', 5, 60)).toBe(false)
+    expect(store.hit).toHaveBeenCalledWith('unit-test-custom-denies', 5, 60)
+  })
+
+  it('does not reach the store once the in-memory pre-filter has tripped', async () => {
+    const store: RateLimitStore = { hit: vi.fn().mockResolvedValue(true) }
+
+    await checkRateLimit(store, 'unit-test-custom-prefilter', 1, 60)
+    expect(await checkRateLimit(store, 'unit-test-custom-prefilter', 1, 60)).toBe(false)
+    expect(store.hit).toHaveBeenCalledTimes(1)
+  })
+
+  it('cloudflareRateLimitStore maps the binding result and passes the bucket as the key', async () => {
+    const limit = vi.fn().mockResolvedValueOnce({ success: true }).mockResolvedValueOnce({ success: false })
+    const store = cloudflareRateLimitStore({ limit })
+
+    expect(await store.hit('auth:10:120:203.0.113.20', 10, 120)).toBe(true)
+    expect(await store.hit('auth:10:120:203.0.113.20', 10, 120)).toBe(false)
+    expect(limit).toHaveBeenCalledWith({ key: 'auth:10:120:203.0.113.20' })
+  })
+
+  it('uses rateLimit.store for /login instead of the session adapter', async () => {
+    vi.mocked(oauth.discoveryRequest).mockResolvedValue({} as unknown as Response)
+    vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue({
+      issuer: 'https://test.auth0.com',
+      authorization_endpoint: 'https://test.auth0.com/authorize',
+    } as oauth.AuthorizationServer)
+
+    const adapter = new MemoryAdapter()
+    const setSpy = vi.spyOn(adapter, 'set')
+    const store: RateLimitStore = { hit: vi.fn().mockResolvedValueOnce(true).mockResolvedValueOnce(false) }
+    const auth = createBezzie({
+      issuer: 'https://test.auth0.com',
+      clientId: 'id',
+      clientSecret: 'secret',
+      adapter: () => adapter,
+      baseUrl: 'https://app.test.com',
+      rateLimit: { store },
+    })
+    ;(auth as unknown as { cache: DiscoveryCache }).cache.cachedAS = null
+    ;(auth as unknown as { cache: DiscoveryCache }).cache.cacheExpiresAt = 0
+    const app = auth.routes()
+    const headers = { 'CF-Connecting-IP': '203.0.113.30' }
+
+    const res1 = await app.request('/login', { headers })
+    const res2 = await app.request('/login', { headers })
+
+    expect(res1.status).toBe(302)
+    expect(res2.status).toBe(429)
+    expect(store.hit).toHaveBeenCalledTimes(2)
+    // The only adapter write is the PKCE state from the allowed login — no ratelimit: records.
+    const writtenKeys = setSpy.mock.calls.map((call) => call[0])
+    expect(writtenKeys.some((key) => key.startsWith('ratelimit:'))).toBe(false)
+  })
+
+  it('auth.rateLimiter() ignores rateLimit.store, and options.store opts in per limiter', async () => {
+    const authStore: RateLimitStore = { hit: vi.fn().mockResolvedValue(false) }
+    const optInStore: RateLimitStore = { hit: vi.fn().mockResolvedValue(false) }
+    const auth = createBezzie({
+      issuer: 'https://test.auth0.com',
+      clientId: 'id',
+      clientSecret: 'secret',
+      adapter: () => new MemoryAdapter(),
+      baseUrl: 'https://app.test.com',
+      rateLimit: { store: authStore },
+    })
+
+    const app = new Hono()
+    app.use('/default/*', auth.rateLimiter({ limit: 5, windowSeconds: 60 }))
+    app.use('/optin/*', auth.rateLimiter({ limit: 6, windowSeconds: 60, store: optInStore }))
+    app.get('/default/x', (c) => c.text('ok'))
+    app.get('/optin/x', (c) => c.text('ok'))
+    const headers = { 'CF-Connecting-IP': '203.0.113.31' }
+
+    // Auth-route store would deny everything; the app limiter must not see it.
+    expect((await app.request('/default/x', { headers })).status).toBe(200)
+    expect(authStore.hit).not.toHaveBeenCalled()
+    // A per-limiter store is honoured.
+    expect((await app.request('/optin/x', { headers })).status).toBe(429)
+    expect(optInStore.hit).toHaveBeenCalledTimes(1)
   })
 })
 

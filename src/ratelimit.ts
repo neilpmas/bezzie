@@ -1,5 +1,5 @@
 import type { Context, MiddlewareHandler } from 'hono'
-import type { SessionAdapter } from './adapters/types'
+import type { SessionAdapter } from './adapters'
 
 /**
  * Per-isolate, in-memory counters keyed by bucket. This is the fast, zero
@@ -31,42 +31,87 @@ function checkMemoryCounter(bucket: string, limit: number, windowSeconds: number
 }
 
 /**
+ * Backing store for the cross-isolate tier of rate limiting.
+ *
+ * `hit` counts one request against `bucket` and resolves `true` if the
+ * caller should proceed, `false` if it should be rejected. It may throw —
+ * {@link checkRateLimit} treats any error as "allow" (fail open).
+ *
+ * `limit` and `windowSeconds` are the caller's configured policy. Stores
+ * backed by a platform primitive with a fixed policy (such as Cloudflare's
+ * Rate Limiting binding, whose limit and period live in wrangler config) may
+ * ignore them; in that case the store's own policy applies in addition to
+ * bezzie's in-memory pre-filter.
+ */
+export interface RateLimitStore {
+  hit(bucket: string, limit: number, windowSeconds: number): Promise<boolean>
+}
+
+/**
+ * The default store: counters kept in the same {@link SessionAdapter} used
+ * for sessions and PKCE state (`ratelimit:<bucket>:<windowStart>`, TTL equal
+ * to the window). A read on every request, but only a *write* while still
+ * under the limit — once the global count reaches `limit`, further requests
+ * are rejected on the read alone, so a sustained flood does not keep
+ * consuming write quota.
+ *
+ * Portable, but a weak fit for hot counters on eventually consistent stores
+ * like Cloudflare KV (reads are edge-cached, and a flood targets one hot
+ * key). Prefer a purpose-built store (e.g. `cloudflareRateLimitStore`) where
+ * one is available.
+ */
+export function adapterRateLimitStore(adapter: SessionAdapter): RateLimitStore {
+  return {
+    async hit(bucket, limit, windowSeconds) {
+      const windowStart = windowStartFor(windowSeconds, Date.now())
+      const key = `ratelimit:${bucket}:${windowStart}`
+
+      const stored = await adapter.get(key)
+      const count = stored && stored._type === 'ratelimit' ? stored.count : 0
+
+      if (count >= limit) {
+        return false
+      }
+
+      // KV-backed adapters reject a TTL under 60s, and the window is the
+      // natural expiry for this record either way.
+      await adapter.set(key, { _type: 'ratelimit', count: count + 1, windowStart }, Math.max(windowSeconds, 60))
+      return true
+    },
+  }
+}
+
+/**
  * Checks and (if still under the limit) increments the rate-limit counter
  * for `bucket`. Returns `true` if the caller should proceed, `false` if the
  * caller should reject the request.
  *
  * `bucket` must fully identify the caller's rate-limit policy, not just the
  * key being limited — it is used as-is for both the in-memory and
- * adapter-backed counters, so two callers sharing a bucket string share a
+ * store-backed counters, so two callers sharing a bucket string share a
  * counter even if they were configured with different limits/windows. Both
- * call sites below (`createRateLimiter`, and the auth-route limiter in
+ * call sites (`createRateLimiter`, and the auth-route limiter in
  * `routes.ts`) fold `limit`/`windowSeconds` into the bucket for this reason.
  *
- * Always fails open: an error reading or writing the counter store is
- * logged and treated as allowed. An auth library that cannot authenticate
- * anyone during a storage incident is a worse outage than the flood this
- * exists to defend against.
+ * Always fails open: an error from the store is logged and treated as
+ * allowed. An auth library that cannot authenticate anyone during a storage
+ * incident is a worse outage than the flood this exists to defend against.
  *
  * Two tiers, in order:
  * 1. The in-memory pre-filter above — checked first, costs nothing, and
  *    rejects outright once a single isolate has seen `limit` requests this
- *    window. Once a flood trips this, it never reaches the adapter.
- * 2. An adapter-backed counter (`ratelimit:<bucket>:<windowStart>`), for
- *    requests the in-memory tier would allow. This is a read on every such
- *    request but only ever a *write* while still under the limit — once the
- *    global count reaches `limit`, further requests are rejected on the
- *    read alone, so a sustained flood does not keep consuming write quota.
+ *    window. Once a flood trips this, it never reaches the store.
+ * 2. The {@link RateLimitStore}, for requests the in-memory tier would
+ *    allow, giving cross-isolate consistency.
  *
  * Note this bounds *burst rate*, not a hard total: a determined, sustained
- * attacker can still accumulate significant adapter writes over a long
- * enough period at the configured rate. It turns "exhausted in seconds" into
- * "would take a sustained, easily-detectable effort" — it is not a
- * substitute for edge-level protection (e.g. Cloudflare's own Rate Limiting
- * rules), which bounds the same traffic without touching this adapter's
- * quota at all. See the README's Security section.
+ * attacker can still accumulate significant store writes over a long enough
+ * period at the configured rate. It is not a substitute for edge-level
+ * protection (e.g. Cloudflare's own Rate Limiting rules). See the README's
+ * Security section.
  */
 export async function checkRateLimit(
-  adapter: SessionAdapter,
+  store: RateLimitStore,
   bucket: string,
   limit: number,
   windowSeconds: number
@@ -75,21 +120,8 @@ export async function checkRateLimit(
     return false
   }
 
-  const windowStart = windowStartFor(windowSeconds, Date.now())
-  const key = `ratelimit:${bucket}:${windowStart}`
-
   try {
-    const stored = await adapter.get(key)
-    const count = stored && stored._type === 'ratelimit' ? stored.count : 0
-
-    if (count >= limit) {
-      return false
-    }
-
-    // KV-backed adapters reject a TTL under 60s, and the window is the
-    // natural expiry for this record either way.
-    await adapter.set(key, { _type: 'ratelimit', count: count + 1, windowStart }, Math.max(windowSeconds, 60))
-    return true
+    return await store.hit(bucket, limit, windowSeconds)
   } catch (err) {
     console.error(
       'Bezzie: rate limit counter store failed, failing open:',
@@ -169,6 +201,15 @@ export interface RateLimiterOptions {
    * @default false
    */
   trustProxyHeaders?: boolean
+  /**
+   * Backing store for this limiter's cross-isolate counters. Defaults to
+   * counting through the session adapter; it does NOT inherit
+   * `rateLimit.store` (which is for bezzie's own auth routes), because a
+   * fixed-policy store such as a Cloudflare Rate Limiting binding would
+   * silently override the `limit`/`windowSeconds` given here. See
+   * {@link RateLimitStore}.
+   */
+  store?: RateLimitStore
 }
 
 async function defaultKeyFn(c: Context, trustProxyHeaders: boolean): Promise<string | undefined> {
@@ -177,8 +218,8 @@ async function defaultKeyFn(c: Context, trustProxyHeaders: boolean): Promise<str
 }
 
 /**
- * Creates a reusable Hono rate-limiting middleware backed by the given
- * adapter, for a consuming app's own routes — not just bezzie's auth routes.
+ * Creates a reusable Hono rate-limiting middleware backed by `defaultStore`
+ * (overridable per limiter via `options.store`), for a consuming app's own routes — not just bezzie's auth routes.
  * Bezzie is the only component that already has identity resolved by the
  * time app routes run, so this can key on the authenticated user rather than
  * making every app re-derive that itself. Fails open on any storage error
@@ -190,8 +231,8 @@ async function defaultKeyFn(c: Context, trustProxyHeaders: boolean): Promise<str
  * different policies on different routes must not let one's traffic count
  * against the other's counter.
  */
-export function createRateLimiter(adapter: SessionAdapter, options: RateLimiterOptions): MiddlewareHandler {
-  const { limit, windowSeconds, keyFn, trustProxyHeaders = false } = options
+export function createRateLimiter(defaultStore: RateLimitStore, options: RateLimiterOptions): MiddlewareHandler {
+  const { limit, windowSeconds, keyFn, trustProxyHeaders = false, store = defaultStore } = options
   const bucketPrefix = `app:${limit}:${windowSeconds}`
   return async (c, next) => {
     const key = keyFn ? await keyFn(c) : await defaultKeyFn(c, trustProxyHeaders)
@@ -199,7 +240,7 @@ export function createRateLimiter(adapter: SessionAdapter, options: RateLimiterO
       warnNoClientIp()
       return next()
     }
-    const allowed = await checkRateLimit(adapter, `${bucketPrefix}:${key}`, limit, windowSeconds)
+    const allowed = await checkRateLimit(store, `${bucketPrefix}:${key}`, limit, windowSeconds)
     if (!allowed) {
       c.header('Retry-After', String(windowSeconds))
       return c.text('Too many requests', 429)

@@ -4,7 +4,7 @@ import * as oauth from 'oauth4webapi'
 import { getAuthorizationServer, type DiscoveryCache } from './discovery'
 import type { Session, PKCEState } from './session'
 import type { ResolvedBezzieConfig } from './index'
-import { checkRateLimit, getClientIp } from './ratelimit'
+import { adapterRateLimitStore, checkRateLimit, getClientIp } from './ratelimit'
 
 export function authRoutes<TUser extends Record<string, unknown> = Record<string, unknown>>(
   config: ResolvedBezzieConfig<TUser>,
@@ -58,6 +58,7 @@ export function authRoutes<TUser extends Record<string, unknown> = Record<string
     const rateLimitAmount = config.rateLimit?.limit ?? 10
     const rateLimitWindowSeconds = config.rateLimit?.windowSeconds ?? 120
     const trustProxyHeaders = config.rateLimit?.trustProxyHeaders ?? false
+    const rateLimitStore = config.rateLimit?.store ?? adapterRateLimitStore(config.adapter)
     // Namespaced by limit/window so this never collides with a differently
     // configured limiter sharing the same adapter (e.g. auth.rateLimiter()
     // on the app's own routes).
@@ -70,7 +71,7 @@ export function authRoutes<TUser extends Record<string, unknown> = Record<string
         // every such client into one shared bucket (see getClientIp).
         return next()
       }
-      const allowed = await checkRateLimit(config.adapter, `${bucketPrefix}:${ip}`, rateLimitAmount, rateLimitWindowSeconds)
+      const allowed = await checkRateLimit(rateLimitStore, `${bucketPrefix}:${ip}`, rateLimitAmount, rateLimitWindowSeconds)
       if (!allowed) {
         c.header('Retry-After', String(rateLimitWindowSeconds))
         return c.text('Too many requests', 429)

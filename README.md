@@ -263,7 +263,7 @@ adapter: new MemoryAdapter()
 | `onRefresh` | `(ctx) => void` | — | Called after token refresh. Errors routed to `onError`. |
 | `onLogout` | `(ctx) => void` | — | Called after session is deleted. Errors routed to `onError`. |
 | `onError` | `(err, ctx) => void` | `console.error` | Handler for non-fatal hook errors |
-| `rateLimit` | `object` | `{ enabled: true, limit: 10, windowSeconds: 120, trustProxyHeaders: false }` | Flood/quota protection on `/login` and `/callback`. See [Security](#security). |
+| `rateLimit` | `object` | `{ enabled: true, limit: 10, windowSeconds: 120, trustProxyHeaders: false }` (+ optional `store`) | Flood/quota protection on `/login` and `/callback`. See [Security](#security). |
 
 ---
 
@@ -335,17 +335,45 @@ app.use('*', async (c, next) => {
 Every unauthenticated `GET /login` writes to your session adapter (the PKCE state). Without any limiting, a trivial unauthenticated loop against `/login` would exhaust Cloudflare KV's free-tier 1,000 writes/day in seconds. Bezzie rate-limits `/login` and `/callback` by client IP to bound that burst, on by default:
 
 ```typescript
-rateLimit: {
-  enabled: true,           // default
-  limit: 10,               // requests per window per IP
-  windowSeconds: 120,
-  trustProxyHeaders: false, // see below
-}
+createBezzie({
+  // ...
+  rateLimit: {
+    enabled: true,            // default
+    limit: 10,                // requests per window per IP
+    windowSeconds: 120,
+    trustProxyHeaders: false, // see below
+  },
+})
 ```
 
 **Be clear-eyed about what this does and doesn't guarantee.** At the defaults, one IP sustaining exactly the allowed rate for a full day can still drive roughly 7,200 requests — and each allowed request costs up to two adapter writes (this counter, plus the PKCE state), so up to ~14,000 writes/day from a single determined source. That's still well over a 1,000/day free-tier budget. What this bounds is a *burst* — the difference between "exhausted in seconds" and "would take a sustained, easily-detectable effort over hours." It is **not** a hard daily cap. For an actual guarantee, pair it with edge-level protection — [Cloudflare's own Rate Limiting rules](https://developers.cloudflare.com/waf/rate-limiting-rules/) bound the same traffic before it reaches your Worker at all, without touching your adapter's write quota.
 
 It fails open — a counter-store error is logged and the request proceeds, because an auth library that can't authenticate anyone during a storage incident is a worse outage than the flood it defends against. A per-isolate in-memory counter sits in front of the adapter-backed one, so a flood hitting a single isolate is caught for free and never reaches your adapter's write quota.
+
+**Counter store (`rateLimit.store`):** by default the cross-isolate counters live in your session adapter, which is portable and needs no extra setup — but hot counters are a weak fit for eventually consistent stores like Cloudflare KV (reads are edge-cached, and a flood hammers one key). On Workers, back the limiter with Cloudflare's [Rate Limiting binding](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/) instead, which is built for exactly this:
+
+```toml
+# wrangler.toml
+[[ratelimits]]
+name = "AUTH_RATE_LIMITER"
+namespace_id = "1001"
+simple = { limit = 10, period = 60 }
+```
+
+```typescript
+import { createBezzie, cloudflareRateLimitStore } from 'bezzie'
+
+createBezzie({
+  // ...
+  rateLimit: {
+    store: cloudflareRateLimitStore(env.AUTH_RATE_LIMITER),
+    limit: 10,
+    windowSeconds: 60,
+  },
+})
+```
+
+The binding's limit and period (10 or 60 seconds) come from `wrangler.toml`, so bezzie's own `limit`/`windowSeconds` are ignored by that store. The in-memory pre-filter and the `Retry-After` header still use bezzie's values, so **set `limit` and `windowSeconds` to match the binding** (as above) or they'll contradict it. Login is keyed on client IP, which Cloudflare advises against because NAT/CGNAT users share one; size the binding's limit with that in mind. Counting is per Cloudflare location and deliberately permissive, not an accurate accounting system. Any object with a `hit(bucket, limit, windowSeconds): Promise<boolean>` method works as a store (Durable Objects, Upstash, etc.), and `auth.rateLimiter({ store })` takes one per limiter. `rateLimit.store` applies only to bezzie's own `/login` and `/callback`; `auth.rateLimiter()` keeps using the session adapter unless you pass its own `store`, so a fixed-policy binding sized for login can't silently cap your API routes.
 
 **IP derivation and `trustProxyHeaders`:** `CF-Connecting-IP` is always trusted (Cloudflare's edge sets it; a client can't forge it). `X-Real-IP`/`X-Forwarded-For` are only consulted when you set `trustProxyHeaders: true` — enable that only behind a proxy you control that strips client-supplied values for those headers, since otherwise a client can set them itself to defeat the limiter entirely. When no trustworthy IP can be found, bezzie skips limiting for that request rather than grouping every such client into one shared bucket (which would otherwise cap your *entire app's* login rate globally).
 
