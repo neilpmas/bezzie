@@ -16,6 +16,7 @@ import { adapterRateLimitStore, createRateLimiter, type RateLimiterOptions, type
 
 import type { SessionAdapter, SessionAdapterFactory } from './session'
 import { ConfigError } from './errors'
+import { isSafeRelativePath } from './redirect'
 
 /**
  * Configuration for Bezzie.
@@ -384,8 +385,8 @@ function createBezzie<TUser extends object = Record<string, unknown>>(
   }
 
   if (config.defaultReturnTo !== undefined) {
-    if (!config.defaultReturnTo.startsWith('/') || config.defaultReturnTo.startsWith('//')) {
-      throw new ConfigError('config_invalid', 'Bezzie: defaultReturnTo must be a relative path starting with / (not //)')
+    if (!isSafeRelativePath(config.defaultReturnTo)) {
+      throw new ConfigError('config_invalid', 'Bezzie: defaultReturnTo must be a relative path starting with / (not //), with no backslashes or control characters')
     }
   }
 

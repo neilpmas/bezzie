@@ -103,6 +103,31 @@ describe('OAuth Routes', () => {
       expect(stored.returnTo).toBe('/dashboard')
     })
 
+    it.each([
+      ['a backslash', '/\\evil.com'],
+      ['an embedded tab', '/\t/evil.com'],
+      ['an absolute URL', 'https://evil.com'],
+      ['an oversized value', '/' + 'a'.repeat(4096)],
+    ])('does not store a returnTo containing %s', async (_label, unsafe) => {
+      ;(auth as unknown as { cache: DiscoveryCache }).cache.cachedAS = null
+      ;(auth as unknown as { cache: DiscoveryCache }).cache.cacheExpiresAt = 0
+      const mockAs = {
+        issuer: config.issuer,
+        authorization_endpoint: `${config.issuer}/authorize`,
+      }
+      vi.mocked(oauth.discoveryRequest).mockResolvedValue({} as unknown as Response)
+      vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue(
+        mockAs as oauth.AuthorizationServer
+      )
+
+      const res = await app.request(`/login?returnTo=${encodeURIComponent(unsafe)}`)
+      const location = new URL(res.headers.get('Location')!)
+      const state = location.searchParams.get('state')
+
+      const stored = (await adapter.get(`pkce:${state}`)) as PKCEState
+      expect(stored.returnTo).toBeUndefined()
+    })
+
     it('sets CSRF cookie with SameSite=Lax', async () => {
       ;(auth as unknown as { cache: DiscoveryCache }).cache.cachedAS = null
       ;(auth as unknown as { cache: DiscoveryCache }).cache.cacheExpiresAt = 0
@@ -327,6 +352,36 @@ describe('OAuth Routes', () => {
       const codeVerifier = 'test-verifier-must-be-at-least-43-chars-long-aaa'
       const returnTo = 'https://evil.com/malicious'
       const csrfToken = 'test-csrf-token-evil'
+
+      await adapter.set(
+        `pkce:${state}`,
+        { _type: 'pkce', codeVerifier, returnTo, csrfToken } as PKCEState,
+        600
+      )
+
+      const res = await app.request(`/callback?state=${state}&code=${code}`, {
+        headers: { Cookie: `__Host-pkce-csrf=${csrfToken}` },
+      })
+
+      expect(res.status).toBe(302)
+      expect(res.headers.get('Location')).toBe('/')
+    })
+
+    // Browsers treat `\` as `/` and strip tabs/newlines inside URLs, so these
+    // resolve to //evil.com despite passing a naive "starts with / not //" check.
+    // Seeded straight into the adapter to prove /callback re-validates even if
+    // an unsafe value was stored (e.g. by an older version).
+    it.each([
+      ['backslash', '/\\evil.com'],
+      ['slash then backslash', '/\\/evil.com'],
+      ['embedded tab', '/\t/evil.com'],
+      ['embedded newline', '/\n/evil.com'],
+      ['control character', '/\u0000evil.com'],
+    ])('rejects returnTo using %s and falls back to /', async (_label, returnTo) => {
+      const state = `test-state-bypass-${_label.replace(/\s/g, '-')}`
+      const code = 'test-code'
+      const codeVerifier = 'test-verifier-must-be-at-least-43-chars-long-aaa'
+      const csrfToken = 'test-csrf-token-bypass'
 
       await adapter.set(
         `pkce:${state}`,

@@ -40,7 +40,7 @@ The core invariant: **access tokens and refresh tokens never leave the Worker**.
 ### Open redirect via `returnTo`
 **Attack:** `?returnTo=https://evil.com` causes a post-login redirect to an attacker-controlled URL.
 
-**Mitigation:** `returnTo` is validated to be a relative path (starts with `/`, not `//`). Absolute URLs are rejected.
+**Mitigation:** `returnTo` must be a same-origin, path-absolute reference: it has to start with `/`, not `//`, contain no backslashes or control characters (browsers read `/\evil.com` and `/<TAB>/evil.com` as `//evil.com`), stay under 2 KB, and resolve to the same origin when parsed. It is checked when stored at `/login` and again before redirecting at `/callback`. Anything else falls back to `defaultReturnTo`.
 
 ### Session fixation
 **Attack:** An attacker pre-plants a session cookie, causes the victim to log in, and then reuses the pre-planted session ID.
