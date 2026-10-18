@@ -93,6 +93,18 @@ describe('createBezzie', () => {
     expect(() => createBezzie(config)).toThrow('Bezzie: defaultReturnTo must be a relative path starting with / (not //)')
   })
 
+  it.each(['/\\evil.com', '/\t/evil.com'])('rejects defaultReturnTo %j that browsers read as protocol-relative', (defaultReturnTo) => {
+    const config = {
+      issuer: 'https://test.auth0.com',
+      clientId: 'test-client-id',
+      clientSecret: 'test-client-secret',
+      adapter: memoryAdapter(),
+      baseUrl: 'https://app.test.com',
+      defaultReturnTo,
+    }
+    expect(() => createBezzie(config)).toThrow('Bezzie: defaultReturnTo must be a relative path')
+  })
+
   it('accepts valid defaultReturnTo', () => {
     const config = {
       issuer: 'https://test.auth0.com',

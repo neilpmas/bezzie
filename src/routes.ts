@@ -5,6 +5,7 @@ import { getAuthorizationServer, type DiscoveryCache } from './discovery'
 import type { Session, PKCEState } from './session'
 import type { ResolvedBezzieConfig } from './index'
 import { adapterRateLimitStore, checkRateLimit, describeWait, getClientIp } from './ratelimit'
+import { isSafeRelativePath } from './redirect'
 
 export function authRoutes<TUser extends object = Record<string, unknown>>(
   config: ResolvedBezzieConfig<TUser>,
@@ -94,7 +95,10 @@ export function authRoutes<TUser extends object = Record<string, unknown>>(
     // the `nonce` claim of the returned ID token to prevent replay.
     const nonce = oauth.generateRandomState()
 
-    const returnTo = c.req.query('returnTo')
+    // Only ever store a returnTo that would pass the redirect check in
+    // /callback, so unsafe or oversized values never reach the adapter.
+    const requestedReturnTo = c.req.query('returnTo')
+    const returnTo = isSafeRelativePath(requestedReturnTo) ? requestedReturnTo : undefined
 
     // Store state, codeVerifier, csrfToken, and nonce in adapter
     await config.adapter.set(`pkce:${state}`, { _type: 'pkce', codeVerifier: code_verifier, returnTo, csrfToken, nonce } as PKCEState, config.pkceStateTtlSeconds ?? 600) // 10 minutes
@@ -324,7 +328,7 @@ export function authRoutes<TUser extends object = Record<string, unknown>>(
       }
     }
 
-    if (returnTo && returnTo.startsWith('/') && !returnTo.startsWith('//')) {
+    if (isSafeRelativePath(returnTo)) {
       return c.redirect(returnTo)
     }
 
