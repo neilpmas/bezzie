@@ -90,7 +90,13 @@ export interface BezzieConfig<TUser extends object = Record<string, unknown>> {
   loginPath?: string
 
   /**
-   * Whether to validate the access token (defaults to true).
+   * Whether to check the access token's JWT signature and claims against the
+   * IdP's JWKS when `audience` is set (defaults to true).
+   *
+   * This is diagnostic, not enforcement: tokens come straight from the IdP's
+   * token endpoint, so a failed check (including an opaque, non-JWT token)
+   * is logged once and the session is still trusted. It does not make bezzie
+   * reject the request. Upstream APIs must still validate the token.
    */
   validateAccessToken?: boolean
 
@@ -244,13 +250,16 @@ export interface BezzieConfig<TUser extends object = Record<string, unknown>> {
      */
     windowSeconds?: number
     /**
-     * Whether to trust `X-Real-IP`/`X-Forwarded-For` for client IP
-     * derivation. `CF-Connecting-IP` is always trusted (set by the
-     * Cloudflare edge, not attacker-controlled). Only enable this behind a
-     * proxy you control that strips client-supplied values for these
-     * headers — otherwise a client can set them itself to defeat the
+     * Whether to trust `CF-Connecting-IP`, `X-Real-IP` and `X-Forwarded-For`
+     * for client IP derivation. On Cloudflare Workers, `CF-Connecting-IP` is
+     * always trusted (the platform sets it; a client can't forge it). On
+     * other runtimes (Node, Bun, Deno) it is NOT trusted unless this is
+     * `true`, because a client can send the header itself. Only enable this
+     * behind a proxy you control that strips client-supplied values for
+     * these headers — otherwise a client can set them itself to defeat the
      * limiter. When no trustworthy IP can be found, limiting is skipped for
      * that request rather than grouping every such client into one bucket.
+     * IPv6 clients are bucketed by their /64 prefix.
      * @default false
      */
     trustProxyHeaders?: boolean

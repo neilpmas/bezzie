@@ -2,7 +2,7 @@ import type { MiddlewareHandler, Context } from 'hono'
 import { getCookie } from 'hono/cookie'
 import * as oauth from 'oauth4webapi'
 import { getAuthorizationServer, type DiscoveryCache } from './discovery'
-import type { Session } from './session'
+import type { Session, SessionAdapter } from './session'
 import type { ResolvedBezzieConfig } from './index'
 
 /**
@@ -86,6 +86,34 @@ type AuthResult<TUser extends object = Record<string, unknown>> =
   | { type: 'unauthenticated' }
   | { type: 'expired' }
 
+const REFRESH_RACE_RETRY_DELAY_MS = 250
+
+/**
+ * After an `invalid_grant` on refresh, look for a session that a concurrent
+ * request has already refreshed (its access token differs from the one this
+ * request started with). Checks immediately, then once more after a short
+ * delay, since the winning request may not have written yet and eventually
+ * consistent stores (Cloudflare KV) can lag. Returns null if none appears.
+ */
+async function findConcurrentlyRefreshedSession<TUser extends object>(
+  store: SessionAdapter<TUser>,
+  sessionId: string,
+  staleAccessToken: string
+): Promise<Session<TUser> | null> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (attempt > 0) {
+      await new Promise((resolve) => setTimeout(resolve, REFRESH_RACE_RETRY_DELAY_MS))
+    }
+    const latest = await store.get(`session:${sessionId}`)
+    if (latest && latest._type === 'session' && latest.accessToken !== staleAccessToken) {
+      return latest
+    }
+  }
+  return null
+}
+
+let warnedJwtValidationFallback = false
+
 async function authenticate<TUser extends object = Record<string, unknown>>(
   c: Context,
   config: ResolvedBezzieConfig<TUser>,
@@ -123,66 +151,75 @@ async function authenticate<TUser extends object = Record<string, unknown>>(
   const as = await getAuthorizationServer(config, cache)
 
   // 5. Check if the access token is expired (with configurable buffer)
-  if (session.expiresAt < Date.now() / 1000 + (config.refreshBufferSeconds ?? 60)) {
-    if (session.refreshToken) {
+  const nowSeconds = Date.now() / 1000
+  if (session.expiresAt < nowSeconds + (config.refreshBufferSeconds ?? 60)) {
+    if (!session.refreshToken) {
+      // Nothing to refresh with (the provider issued no refresh token, e.g.
+      // `offline_access` was not granted). Inside the refresh buffer the access
+      // token is still usable, but once it has actually expired the session
+      // is dead: keeping it "authenticated" for the rest of its KV lifetime
+      // would only hand upstreams a token they will reject.
+      if (session.expiresAt <= nowSeconds) {
+        await sessionStore.delete(`session:${sessionId}`)
+        return { type: 'unauthenticated' }
+      }
+    } else {
       try {
         // 6. If expired → use oauth4webapi to perform a refresh token grant
         const client: oauth.Client = { client_id: config.clientId }
         const clientAuth = oauth.ClientSecretPost(config.clientSecret)
 
         const response = await oauth.refreshTokenGrantRequest(as, client, clientAuth, session.refreshToken, { signal: AbortSignal.timeout(5000) })
+        const result = await oauth.processRefreshTokenResponse(as, client, response)
 
-        try {
-          const result = await oauth.processRefreshTokenResponse(as, client, response)
-          // Capture previous expiresAt before overwriting, for onRefresh hook.
-          const previousExpiresAt = session.expiresAt
-          // Update the session in KV with new tokens and new expiresAt
-          session.accessToken = result.access_token
-          if (result.refresh_token) {
-            session.refreshToken = result.refresh_token
+        // Capture previous expiresAt before overwriting, for onRefresh hook.
+        const previousExpiresAt = session.expiresAt
+        // Update the session in KV with new tokens and new expiresAt
+        session.accessToken = result.access_token
+        if (result.refresh_token) {
+          session.refreshToken = result.refresh_token
+        }
+        session.expiresAt = Math.floor(Date.now() / 1000) + (result.expires_in || 3600)
+
+        await sessionStore.set(`session:${sessionId}`, session, config.sessionTtlSeconds ?? 30 * 24 * 60 * 60) // 30 days, matches initial session TTL
+
+        if (config.onRefresh) {
+          try {
+            await config.onRefresh({
+              user: session.user,
+              sessionId,
+              previousExpiresAt,
+              newExpiresAt: session.expiresAt,
+              c,
+            })
+          } catch (hookErr) {
+            const handler = config.onError ?? ((e: unknown) => console.error('Bezzie: onRefresh hook threw:', e instanceof Error ? e.message : String(e)))
+            handler(hookErr, { hook: 'onRefresh', c })
           }
-          session.expiresAt = Math.floor(Date.now() / 1000) + (result.expires_in || 3600)
-
-          await sessionStore.set(`session:${sessionId}`, session, config.sessionTtlSeconds ?? 30 * 24 * 60 * 60) // 30 days, matches initial session TTL
-
-          if (config.onRefresh) {
-            try {
-              await config.onRefresh({
-                user: session.user,
-                sessionId,
-                previousExpiresAt,
-                newExpiresAt: session.expiresAt,
-                c,
-              })
-            } catch (hookErr) {
-              const handler = config.onError ?? ((e: unknown) => console.error('Bezzie: onRefresh hook threw:', e instanceof Error ? e.message : String(e)))
-              handler(hookErr, { hook: 'onRefresh', c })
-            }
-          }
-        } catch (err) {
-          if (err instanceof oauth.ResponseBodyError && err.error === 'invalid_grant') {
-            // Potential race condition: another request might have already refreshed this token
-            const refreshedSession = await sessionStore.get(`session:${sessionId}`)
-            if (
-              refreshedSession &&
-              refreshedSession._type === 'session' &&
-              refreshedSession.accessToken !== session.accessToken
-            ) {
-              // Someone else already refreshed it! Use that session.
-              session = refreshedSession
-            } else {
-              // Truly failed
-              await sessionStore.delete(`session:${sessionId}`)
-              return { type: 'unauthenticated' }
-            }
-          } else {
+        }
+      } catch (err) {
+        if (err instanceof oauth.ResponseBodyError && err.error === 'invalid_grant') {
+          // The refresh token was rejected. Usually that means it is genuinely
+          // dead (revoked, expired), but with rotating refresh tokens it can
+          // also mean a concurrent request already redeemed it and stored a
+          // fresh session. There is no cross-request lock, so look for that
+          // before giving up.
+          const refreshedSession = await findConcurrentlyRefreshedSession(sessionStore, sessionId, session.accessToken)
+          if (!refreshedSession) {
+            // Truly failed
             await sessionStore.delete(`session:${sessionId}`)
             return { type: 'unauthenticated' }
           }
+          session = refreshedSession
+        } else {
+          // Timeout, network error, IdP 5xx, misconfiguration, or a storage
+          // failure while saving the new tokens. None of these say the user's
+          // refresh token is bad, so keep the session — deleting it would log
+          // out everyone whose token expires during an IdP blip — and fail
+          // only this request.
+          console.warn('Bezzie: token refresh failed (session kept, request unauthenticated):', err instanceof Error ? err.message : String(err))
+          return { type: 'unauthenticated' }
         }
-      } catch {
-        await sessionStore.delete(`session:${sessionId}`)
-        return { type: 'unauthenticated' }
       }
     }
   }
@@ -206,7 +243,14 @@ async function authenticate<TUser extends object = Record<string, unknown>>(
       // 9. If JWT invalid → fallback to opaque token (pass through)
       // This allows Bezzie to work with providers that issue opaque access tokens
       // or if the JWT is not verifiable for some reason, but we still have a valid session.
-      console.warn('Bezzie: JWT access token validation failed (falling back to session trust):', err instanceof Error ? err.message : String(err))
+      // Logged once per isolate: with opaque tokens this fails on every request.
+      if (!warnedJwtValidationFallback) {
+        warnedJwtValidationFallback = true
+        console.warn(
+          'Bezzie: JWT access token validation failed (falling back to session trust; further failures are not logged):',
+          err instanceof Error ? err.message : String(err)
+        )
+      }
     }
   }
 

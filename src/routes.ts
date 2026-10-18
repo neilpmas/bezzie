@@ -4,7 +4,7 @@ import * as oauth from 'oauth4webapi'
 import { getAuthorizationServer, type DiscoveryCache } from './discovery'
 import type { Session, PKCEState } from './session'
 import type { ResolvedBezzieConfig } from './index'
-import { adapterRateLimitStore, checkRateLimit, describeWait, getClientIp } from './ratelimit'
+import { adapterRateLimitStore, checkRateLimit, describeWait, getClientIp, warnNoClientIp } from './ratelimit'
 import { isSafeRelativePath } from './redirect'
 
 export function authRoutes<TUser extends object = Record<string, unknown>>(
@@ -70,6 +70,7 @@ export function authRoutes<TUser extends object = Record<string, unknown>>(
       if (!ip) {
         // No trustworthy IP to key on — skip limiting rather than lumping
         // every such client into one shared bucket (see getClientIp).
+        warnNoClientIp()
         return next()
       }
       const allowed = await checkRateLimit(rateLimitStore, `${bucketPrefix}:${ip}`, rateLimitAmount, rateLimitWindowSeconds)
@@ -185,27 +186,48 @@ export function authRoutes<TUser extends object = Record<string, unknown>>(
       sameSite: 'Lax',
     })
 
-    const as = await getAuthorizationServer(config, cache)
+    // The PKCE state and CSRF cookie are already spent at this point, so a
+    // failure from here on needs a clean response (the user just starts the
+    // login again) rather than an unhandled exception.
+    let as: oauth.AuthorizationServer
+    try {
+      as = await getAuthorizationServer(config, cache)
+    } catch (err) {
+      console.error('Bezzie: OIDC discovery failed during callback:', err instanceof Error ? err.message : String(err))
+      return c.text('Authentication provider unavailable', 502)
+    }
 
     const client: oauth.Client = { client_id: config.clientId }
     const clientAuth = oauth.ClientSecretPost(config.clientSecret)
 
-    const callbackParams = oauth.validateAuthResponse(
-      as,
-      client,
-      new URL(c.req.url).searchParams,
-      oauth.skipStateCheck, // bezzie validates state via KV lookup above
-    )
+    let callbackParams: URLSearchParams
+    try {
+      callbackParams = oauth.validateAuthResponse(
+        as,
+        client,
+        new URL(c.req.url).searchParams,
+        oauth.skipStateCheck, // bezzie validates state via KV lookup above
+      )
+    } catch (err) {
+      console.error('Bezzie: authorization response rejected:', err instanceof Error ? err.message : String(err))
+      return c.text('Authentication failed', 400)
+    }
 
-    const response = await oauth.authorizationCodeGrantRequest(
-      as,
-      client,
-      clientAuth,
-      callbackParams,
-      `${config.baseUrl}${config.routes?.callback ?? '/auth/callback'}`,
-      codeVerifier,
-      { signal: AbortSignal.timeout(5000) },
-    )
+    let response: Response
+    try {
+      response = await oauth.authorizationCodeGrantRequest(
+        as,
+        client,
+        clientAuth,
+        callbackParams,
+        `${config.baseUrl}${config.routes?.callback ?? '/auth/callback'}`,
+        codeVerifier,
+        { signal: AbortSignal.timeout(5000) },
+      )
+    } catch (err) {
+      console.error('Bezzie: token request failed:', err instanceof Error ? err.message : String(err))
+      return c.text('Authentication provider unavailable', 502)
+    }
 
     let result: oauth.TokenEndpointResponse
     try {
@@ -359,7 +381,25 @@ export function authRoutes<TUser extends object = Record<string, unknown>>(
       }
     }
 
-    const as = await getAuthorizationServer(config, cache)
+    // The local session is already gone, so clear the cookie before anything
+    // that talks to the IdP — a discovery failure below must not leave the
+    // browser holding a cookie for a deleted session.
+    deleteCookie(c, sessionCookieName, {
+      path: '/',
+      secure,
+      httpOnly: true,
+      sameSite: 'Lax',
+    })
+
+    let as: oauth.AuthorizationServer
+    try {
+      as = await getAuthorizationServer(config, cache)
+    } catch (err) {
+      // Can't reach the IdP to revoke or end its session, but the local logout
+      // succeeded; send the user home instead of showing them an error.
+      console.error('Bezzie: OIDC discovery failed during logout (local session cleared):', err instanceof Error ? err.message : String(err))
+      return c.redirect('/')
+    }
 
     // S12: best-effort revoke the refresh token at the IdP so the tokens are
     // invalidated server-side, not just locally. Wrapped in try/catch — a
@@ -376,13 +416,6 @@ export function authRoutes<TUser extends object = Record<string, unknown>>(
         console.error('Bezzie: token revocation failed (continuing with logout):', err)
       }
     }
-
-    deleteCookie(c, sessionCookieName, {
-      path: '/',
-      secure,
-      httpOnly: true,
-      sameSite: 'Lax',
-    })
 
     let logoutUrl: URL
     if (config.providerOverrides?.logoutUrl) {

@@ -9,7 +9,39 @@ import type { SessionAdapter } from './adapters'
  * isolate, lost on eviction — which is why the adapter-backed tier below
  * exists for cross-isolate consistency.
  */
-const memoryCounters = new Map<string, { count: number; windowStart: number }>()
+const memoryCounters = new Map<string, { count: number; windowStart: number; windowEnd: number }>()
+
+/**
+ * Upper bound on live buckets held in memory. Keys are derived from client
+ * IPs, so without a cap a long-lived process (Node, Bun, Deno — or a Workers
+ * isolate that stays warm) would grow this map by one entry per distinct
+ * client forever. At the cap, expired buckets are swept first, then the
+ * oldest are evicted — which at worst forgets an in-flight count, leaving the
+ * store-backed tier to enforce the limit.
+ */
+export const MAX_MEMORY_COUNTERS = 10_000
+const SWEEP_INTERVAL_MS = 1000
+let lastSweep = 0
+
+/** Number of buckets currently held by the in-memory tier. For tests. */
+export function memoryCounterCount(): number {
+  return memoryCounters.size
+}
+
+function makeRoomForCounter(now: number): void {
+  if (memoryCounters.size < MAX_MEMORY_COUNTERS) return
+  if (now - lastSweep >= SWEEP_INTERVAL_MS) {
+    lastSweep = now
+    for (const [key, entry] of memoryCounters) {
+      if (entry.windowEnd <= now) memoryCounters.delete(key)
+    }
+  }
+  while (memoryCounters.size >= MAX_MEMORY_COUNTERS) {
+    const oldest = memoryCounters.keys().next()
+    if (oldest.done) break
+    memoryCounters.delete(oldest.value)
+  }
+}
 
 function windowStartFor(windowSeconds: number, now: number): number {
   const windowMs = windowSeconds * 1000
@@ -22,7 +54,8 @@ function checkMemoryCounter(bucket: string, limit: number, windowSeconds: number
   const entry = memoryCounters.get(bucket)
 
   if (!entry || entry.windowStart !== windowStart) {
-    memoryCounters.set(bucket, { count: 1, windowStart })
+    if (!entry) makeRoomForCounter(now)
+    memoryCounters.set(bucket, { count: 1, windowStart, windowEnd: windowStart + windowSeconds * 1000 })
     return true
   }
 
@@ -146,21 +179,59 @@ export function describeWait(windowSeconds: number): string {
 
 let warnedNoClientIp = false
 
-function warnNoClientIp(): void {
+export function warnNoClientIp(): void {
   if (warnedNoClientIp) return
   warnedNoClientIp = true
   console.warn(
-    'Bezzie: could not derive a client IP for rate limiting (no CF-Connecting-IP header, ' +
-      'and trustProxyHeaders is not enabled) — limiting is skipped for these requests rather ' +
-      'than grouping every client into one shared bucket. Enable `trustProxyHeaders` only if ' +
-      'you trust your upstream proxy to set X-Real-IP/X-Forwarded-For and strip client-supplied ' +
-      'values, since otherwise a client can set these themselves to defeat the limiter.'
+    'Bezzie: could not derive a trustworthy client IP for rate limiting — limiting is skipped for these ' +
+      'requests rather than grouping every client into one shared bucket. CF-Connecting-IP is only ' +
+      'trusted when running on Cloudflare Workers; elsewhere, and for X-Real-IP/X-Forwarded-For, enable ' +
+      '`trustProxyHeaders` — but only if you trust your upstream proxy to set these headers and strip ' +
+      'client-supplied values, since otherwise a client can set them itself to defeat the limiter.'
   )
 }
 
+function runningOnCloudflareWorkers(): boolean {
+  const nav = (globalThis as { navigator?: { userAgent?: string } }).navigator
+  return nav?.userAgent === 'Cloudflare-Workers'
+}
+
 /**
- * Best-effort client IP. `CF-Connecting-IP` is always trusted — it is set by
- * the Cloudflare edge and cannot be forged by the client. `X-Real-IP` /
+ * Collapses an address into the key its rate-limit bucket should use. IPv4 is
+ * used as-is. IPv6 is reduced to its /64 prefix: a single subscriber or VPS is
+ * normally handed a whole /64 (2^64 addresses), so keying on the full address
+ * would let one host rotate through fresh buckets and never be limited.
+ * IPv4-mapped IPv6 (`::ffff:1.2.3.4`) is treated as the IPv4 address.
+ */
+export function normalizeIp(raw: string): string {
+  let ip = raw.trim().toLowerCase()
+  if (ip.startsWith('[') && ip.endsWith(']')) ip = ip.slice(1, -1)
+  const zone = ip.indexOf('%')
+  if (zone !== -1) ip = ip.slice(0, zone)
+
+  if (!ip.includes(':')) return ip
+
+  const mapped = ip.match(/^(?:(?:0{1,4}:){5}|::)ffff:(\d{1,3}(?:\.\d{1,3}){3})$/)
+  if (mapped) return mapped[1]
+
+  // Expand `::` so the first four groups (the /64) can be read positionally.
+  const halves = ip.split('::')
+  if (halves.length > 2) return ip
+  const head = halves[0] ? halves[0].split(':') : []
+  const tail = halves.length === 2 && halves[1] ? halves[1].split(':') : []
+  const missing = 8 - head.length - tail.length
+  if ((halves.length === 1 && head.length !== 8) || (halves.length === 2 && missing < 1)) return ip
+  const groups = halves.length === 1 ? head : [...head, ...new Array<string>(missing).fill('0'), ...tail]
+  if (groups.length !== 8 || !groups.every((g) => /^[0-9a-f]{1,4}$/.test(g))) return ip
+  return `${groups.slice(0, 4).map((g) => g.padStart(4, '0')).join(':')}::/64`
+}
+
+/**
+ * Best-effort client IP. `CF-Connecting-IP` is set by the Cloudflare edge and
+ * cannot be forged by the client — but only when the request actually came
+ * through it. It is therefore trusted when running on Cloudflare Workers
+ * (where the platform guarantees that) or when `trustProxyHeaders` is on;
+ * on Node/Bun/Deno a client can send the header itself. `X-Real-IP` /
  * `X-Forwarded-For` are only consulted when `trustProxyHeaders` is `true`,
  * because outside of a trusted proxy that strips client-supplied values,
  * these are attacker-controlled: a client can set them to anything, which
@@ -169,17 +240,20 @@ function warnNoClientIp(): void {
  * protect. Returns `undefined` when no trustworthy IP can be derived; the
  * caller should skip limiting in that case rather than fall back to a
  * single shared bucket, which would rate-limit all such clients together.
+ * IPv6 addresses are returned as their /64 prefix (see {@link normalizeIp}).
  */
 export function getClientIp(c: Context, trustProxyHeaders = false): string | undefined {
-  const cfConnectingIp = c.req.header('cf-connecting-ip')
-  if (cfConnectingIp) return cfConnectingIp
+  if (trustProxyHeaders || runningOnCloudflareWorkers()) {
+    const cfConnectingIp = c.req.header('cf-connecting-ip')
+    if (cfConnectingIp) return normalizeIp(cfConnectingIp)
+  }
 
   if (trustProxyHeaders) {
     const forwardedFor = c.req.header('x-forwarded-for')?.split(',')[0]?.trim()
-    if (forwardedFor) return forwardedFor
+    if (forwardedFor) return normalizeIp(forwardedFor)
 
     const realIp = c.req.header('x-real-ip')
-    if (realIp) return realIp
+    if (realIp) return normalizeIp(realIp)
   }
 
   return undefined
@@ -207,9 +281,10 @@ export interface RateLimiterOptions {
    */
   keyFn?: (c: Context) => string | undefined | Promise<string | undefined>
   /**
-   * Whether to trust `X-Real-IP`/`X-Forwarded-For` for IP derivation when no
-   * `keyFn` is given and no authenticated user is present. `CF-Connecting-IP`
-   * is always trusted. Only enable this behind a proxy you control that
+   * Whether to trust `CF-Connecting-IP`/`X-Real-IP`/`X-Forwarded-For` for IP
+   * derivation when no `keyFn` is given and no authenticated user is present.
+   * `CF-Connecting-IP` is always trusted on Cloudflare Workers, but only
+   * with this on elsewhere. Only enable this behind a proxy you control that
    * strips client-supplied values for these headers — see {@link getClientIp}.
    * @default false
    */

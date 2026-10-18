@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { createBezzie, MemoryAdapter, adapterRateLimitStore, cloudflareRateLimitStore, type SessionAdapter, type RateLimitStore } from '../src'
 import { adapterFactory } from './helpers'
-import { checkRateLimit, describeWait } from '../src/ratelimit'
+import { checkRateLimit, describeWait, getClientIp, normalizeIp, memoryCounterCount, MAX_MEMORY_COUNTERS } from '../src/ratelimit'
 import type { DiscoveryCache } from '../src/discovery'
 import * as oauth from 'oauth4webapi'
 import { Hono } from 'hono'
@@ -409,5 +409,115 @@ describe('auth.rateLimiter() — exported reusable primitive', () => {
     })
     expect(trusted1.status).toBe(200)
     expect(trusted2.status).toBe(429)
+  })
+})
+
+describe('normalizeIp', () => {
+  it.each([
+    ['203.0.113.7', '203.0.113.7'],
+    ['2001:db8:1:2:aaaa:bbbb:cccc:dddd', '2001:0db8:0001:0002::/64'],
+    ['2001:DB8:1:2::1', '2001:0db8:0001:0002::/64'],
+    ['2001:db8:1:2::', '2001:0db8:0001:0002::/64'],
+    ['2001:db8::1', '2001:0db8:0000:0000::/64'],
+    ['::1', '0000:0000:0000:0000::/64'],
+    ['[2001:db8:1:2::9]', '2001:0db8:0001:0002::/64'],
+    ['fe80::1%eth0', 'fe80:0000:0000:0000::/64'],
+    ['::ffff:203.0.113.7', '203.0.113.7'],
+    ['0:0:0:0:0:ffff:203.0.113.7', '203.0.113.7'],
+  ])('normalises %s', (input, expected) => {
+    expect(normalizeIp(input)).toBe(expected)
+  })
+
+  it('maps every address in a /64 to the same key and different /64s to different keys', () => {
+    expect(normalizeIp('2001:db8:aa:bb::1')).toBe(normalizeIp('2001:db8:aa:bb:ffff:ffff:ffff:ffff'))
+    expect(normalizeIp('2001:db8:aa:bb::1')).not.toBe(normalizeIp('2001:db8:aa:bc::1'))
+  })
+
+  it.each(['not-an-ip', '1:2:3', '1::2::3', '2001:db8:::1', '1:2:3:4:5:6:7:8:9'])(
+    'returns malformed input %j unchanged rather than guessing',
+    (input) => {
+      expect(normalizeIp(input)).toBe(input)
+    }
+  )
+})
+
+describe('client IP trust', () => {
+  const makeApp = (options: { trustProxyHeaders?: boolean } = {}) => {
+    const auth = createBezzie({
+      issuer: 'https://test.auth0.com',
+      clientId: 'id',
+      clientSecret: 'secret',
+      adapter: () => new MemoryAdapter(),
+      baseUrl: 'https://app.test.com',
+    })
+    const app = new Hono()
+    app.use('/api/*', auth.rateLimiter({ limit: 1, windowSeconds: 60, ...options }))
+    app.get('/api/thing', (c) => c.text('ok'))
+    return app
+  }
+
+  it('limits an IPv6 client by /64, so rotating addresses within one prefix does not evade the limiter', async () => {
+    const app = makeApp()
+    const first = await app.request('/api/thing', { headers: { 'CF-Connecting-IP': '2001:db8:100:200::1' } })
+    const rotated = await app.request('/api/thing', { headers: { 'CF-Connecting-IP': '2001:db8:100:200:dead:beef:1234:5678' } })
+    const otherPrefix = await app.request('/api/thing', { headers: { 'CF-Connecting-IP': '2001:db8:100:201::1' } })
+
+    expect(first.status).toBe(200)
+    expect(rotated.status).toBe(429)
+    expect(otherPrefix.status).toBe(200)
+  })
+
+  describe('outside Cloudflare Workers', () => {
+    const spoofed = (n: number) => ({ 'CF-Connecting-IP': `198.51.100.${n}` })
+
+    it('does not trust a client-supplied CF-Connecting-IP by default', async () => {
+      vi.stubGlobal('navigator', { userAgent: 'Node.js/24' })
+      try {
+        const app = makeApp()
+        // A client rotating the header must neither be limited as that IP...
+        const a = await app.request('/api/thing', { headers: spoofed(101) })
+        const b = await app.request('/api/thing', { headers: spoofed(101) })
+        expect(a.status).toBe(200)
+        expect(b.status).toBe(200)
+      } finally {
+        vi.unstubAllGlobals()
+      }
+    })
+
+    it('trusts CF-Connecting-IP when trustProxyHeaders is true', async () => {
+      vi.stubGlobal('navigator', { userAgent: 'Node.js/24' })
+      try {
+        const app = makeApp({ trustProxyHeaders: true })
+        const a = await app.request('/api/thing', { headers: spoofed(102) })
+        const b = await app.request('/api/thing', { headers: spoofed(102) })
+        expect(a.status).toBe(200)
+        expect(b.status).toBe(429)
+      } finally {
+        vi.unstubAllGlobals()
+      }
+    })
+
+    it('getClientIp ignores CF-Connecting-IP off Workers unless trusted', () => {
+      vi.stubGlobal('navigator', { userAgent: 'Bun/1.2' })
+      try {
+        const c = { req: { header: (name: string) => (name === 'cf-connecting-ip' ? '198.51.100.103' : undefined) } }
+        expect(getClientIp(c as never)).toBeUndefined()
+        expect(getClientIp(c as never, true)).toBe('198.51.100.103')
+      } finally {
+        vi.unstubAllGlobals()
+      }
+    })
+  })
+})
+
+describe('in-memory counter cap', () => {
+  it('never holds more than MAX_MEMORY_COUNTERS buckets, even under a flood of distinct keys', async () => {
+    const allowAll: RateLimitStore = { hit: async () => true }
+
+    for (let i = 0; i < MAX_MEMORY_COUNTERS + 500; i++) {
+      await checkRateLimit(allowAll, `flood:${i}`, 5, 60)
+    }
+
+    expect(memoryCounterCount()).toBeLessThanOrEqual(MAX_MEMORY_COUNTERS)
   })
 })
