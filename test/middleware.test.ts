@@ -173,6 +173,102 @@ describe('Middleware', () => {
     expect(await adapter.get(`session:${sessionId}`)).toBeNull()
   })
 
+  describe('session without a refresh token', () => {
+    const seed = (expiresInSeconds: number) =>
+      adapter.set(
+        'session:no-refresh',
+        {
+          _type: 'session',
+          accessToken: 'only-token',
+          expiresAt: Math.floor(Date.now() / 1000) + expiresInSeconds,
+          createdAt: Math.floor(Date.now() / 1000) - 1000,
+          user: { sub: '123' },
+        },
+        3600
+      )
+
+    it('deletes the session and returns 401 once the access token has expired', async () => {
+      await seed(-10)
+
+      const res = await app.request('/api/me', { headers: { Cookie: '__Host-session=no-refresh' } })
+
+      expect(res.status).toBe(401)
+      expect(await adapter.get('session:no-refresh')).toBeNull()
+      expect(oauth.refreshTokenGrantRequest).not.toHaveBeenCalled()
+    })
+
+    it('still authenticates while the token is inside the refresh buffer but not yet expired', async () => {
+      await seed(30) // within the 60s buffer, not expired
+      vi.mocked(oauth.validateJwtAccessToken).mockResolvedValue({} as oauth.JWTAccessTokenClaims)
+
+      const res = await app.request('/api/me', { headers: { Cookie: '__Host-session=no-refresh' } })
+
+      expect(res.status).toBe(200)
+      expect(await adapter.get('session:no-refresh')).not.toBeNull()
+    })
+  })
+
+  describe('transient refresh failures', () => {
+    const seedExpired = () =>
+      adapter.set(
+        'session:transient',
+        {
+          _type: 'session',
+          accessToken: 'expired-token',
+          refreshToken: 'valid-refresh',
+          expiresAt: Math.floor(Date.now() / 1000) - 10,
+          createdAt: Math.floor(Date.now() / 1000) - 1000,
+          user: { sub: '123' },
+        },
+        3600
+      )
+
+    it('keeps the session when the token request fails at the network level', async () => {
+      await seedExpired()
+      vi.mocked(oauth.refreshTokenGrantRequest).mockRejectedValue(new TypeError('fetch failed'))
+
+      const res = await app.request('/api/me', { headers: { Cookie: '__Host-session=transient' } })
+
+      expect(res.status).toBe(401)
+      const stored = (await adapter.get('session:transient')) as Session
+      expect(stored.refreshToken).toBe('valid-refresh')
+    })
+
+    it('keeps the session when the IdP returns a non-invalid_grant error', async () => {
+      await seedExpired()
+      vi.mocked(oauth.refreshTokenGrantRequest).mockResolvedValue({} as Response)
+      vi.mocked(oauth.processRefreshTokenResponse).mockRejectedValue(
+        new oauth.ResponseBodyError('temporarily_unavailable', {
+          cause: { error: 'temporarily_unavailable' },
+          response: new Response(),
+        })
+      )
+
+      const res = await app.request('/api/me', { headers: { Cookie: '__Host-session=transient' } })
+
+      expect(res.status).toBe(401)
+      expect(await adapter.get('session:transient')).not.toBeNull()
+    })
+
+    it('recovers on the next request once the IdP is back', async () => {
+      await seedExpired()
+      vi.mocked(oauth.refreshTokenGrantRequest).mockRejectedValueOnce(new TypeError('fetch failed'))
+      vi.mocked(oauth.processRefreshTokenResponse).mockResolvedValue({
+        access_token: 'new-token',
+        expires_in: 3600,
+        token_type: 'bearer',
+      } as oauth.TokenEndpointResponse)
+      vi.mocked(oauth.refreshTokenGrantRequest).mockResolvedValue({} as Response)
+      vi.mocked(oauth.validateJwtAccessToken).mockResolvedValue({} as oauth.JWTAccessTokenClaims)
+
+      const first = await app.request('/api/me', { headers: { Cookie: '__Host-session=transient' } })
+      const second = await app.request('/api/me', { headers: { Cookie: '__Host-session=transient' } })
+
+      expect(first.status).toBe(401)
+      expect(second.status).toBe(200)
+    })
+  })
+
   it('Opaque token fallback - passes through when JWT validation fails', async () => {
     const sessionId = 'test-session-id'
     await adapter.set(
@@ -200,6 +296,33 @@ describe('Middleware', () => {
     expect(res.status).toBe(200)
     const data = (await res.json()) as { accessToken: string }
     expect(data.accessToken).toBe('invalid-jwt')
+  })
+
+  it('does not log JWT validation fallback on every request', async () => {
+    const sessionId = 'opaque-session'
+    await adapter.set(
+      `session:${sessionId}`,
+      {
+        _type: 'session',
+        accessToken: 'opaque-token',
+        refreshToken: 'refresh',
+        expiresAt: Math.floor(Date.now() / 1000) + 3600,
+        createdAt: Math.floor(Date.now() / 1000),
+        user: { sub: '123' },
+      },
+      3600
+    )
+    vi.mocked(oauth.validateJwtAccessToken).mockRejectedValue(new Error('Invalid token'))
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const headers = { Cookie: `__Host-session=${sessionId}` }
+
+    await app.request('/api/me', { headers })
+    warn.mockClear()
+    await app.request('/api/me', { headers })
+    await app.request('/api/me', { headers })
+
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
   })
 
   it('triggers refresh with 60s buffer', async () => {
@@ -371,6 +494,64 @@ describe('Middleware', () => {
 
     // Verify it was re-read (1st in middleware start, 2nd after invalid_grant)
     expect(getCount).toBe(2)
+  })
+
+  it('finds a session refreshed by a concurrent request even if it lands after the first re-read', async () => {
+    const sessionId = 'test-session-id'
+    const user = { sub: 'user-123' }
+    await adapter.set(
+      `session:${sessionId}`,
+      {
+        _type: 'session',
+        accessToken: 'expired-token',
+        refreshToken: 'valid-refresh',
+        expiresAt: Math.floor(Date.now() / 1000) - 10,
+        createdAt: Math.floor(Date.now() / 1000),
+        user,
+      },
+      86400
+    )
+
+    vi.mocked(oauth.refreshTokenGrantRequest).mockResolvedValue({} as Response)
+    vi.mocked(oauth.processRefreshTokenResponse).mockRejectedValue(
+      new oauth.ResponseBodyError('invalid_grant', {
+        cause: { error: 'invalid_grant' },
+        response: new Response(),
+      })
+    )
+    vi.mocked(oauth.validateJwtAccessToken).mockResolvedValue({} as oauth.JWTAccessTokenClaims)
+
+    // Reads 1 (start) and 2 (immediate re-read) see the stale session; the
+    // winning request's write lands before read 3 (the delayed re-read).
+    const originalGet = adapter.get.bind(adapter)
+    let getCount = 0
+    vi.spyOn(adapter, 'get').mockImplementation(async (id: string) => {
+      getCount++
+      if (getCount === 3) {
+        await adapter.set(
+          id,
+          {
+            _type: 'session',
+            accessToken: 'winner-token',
+            refreshToken: 'winner-refresh',
+            expiresAt: Math.floor(Date.now() / 1000) + 3600,
+            createdAt: Math.floor(Date.now() / 1000),
+            user,
+          },
+          86400
+        )
+      }
+      return originalGet(id)
+    })
+
+    const res = await app.request('/api/me', { headers: { Cookie: `__Host-session=${sessionId}` } })
+
+    expect(res.status).toBe(200)
+    const data = (await res.json()) as { accessToken?: string }
+    expect(data.accessToken).toBe('winner-token')
+    expect(getCount).toBe(3)
+    // The winner's session was not deleted by the losing request.
+    expect(await adapter.get(`session:${sessionId}`)).not.toBeNull()
   })
 
   it('redirects to login when session is older than 90 days (absolute expiry)', async () => {
@@ -706,7 +887,12 @@ describe('Middleware', () => {
       )
 
       vi.mocked(oauth.refreshTokenGrantRequest).mockResolvedValue({} as Response)
-      vi.mocked(oauth.processRefreshTokenResponse).mockRejectedValue(new Error('failed'))
+      vi.mocked(oauth.processRefreshTokenResponse).mockRejectedValue(
+        new oauth.ResponseBodyError('invalid_grant', {
+          cause: { error: 'invalid_grant' },
+          response: new Response(),
+        })
+      )
 
       const res = await app.request('/api/me', {
         headers: {
