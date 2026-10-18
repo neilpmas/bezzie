@@ -308,6 +308,60 @@ describe('OAuth Routes', () => {
       expect(await adapter.get(`pkce:${state}`)).toBeNull()
     })
 
+    describe('failures after the PKCE state is spent', () => {
+      const codeVerifier = 'test-verifier-must-be-at-least-43-chars-long-aaa'
+      const csrfToken = 'test-csrf-token-fail'
+
+      const setup = async (state: string) => {
+        const localAdapter = new MemoryAdapter()
+        const localApp = createBezzie({ ...config, adapter: adapterFactory(localAdapter) }).routes()
+        await localAdapter.set(`pkce:${state}`, { _type: 'pkce', codeVerifier, csrfToken } as PKCEState, 600)
+        const request = () =>
+          localApp.request(`/callback?state=${state}&code=abc`, {
+            headers: { Cookie: `__Host-pkce-csrf=${csrfToken}` },
+          })
+        return { localAdapter, request }
+      }
+
+      it('returns 502 instead of throwing when OIDC discovery fails', async () => {
+        const { localAdapter, request } = await setup('state-disc-fail')
+        vi.mocked(oauth.discoveryRequest).mockRejectedValue(new Error('network down'))
+
+        const res = await request()
+
+        expect(res.status).toBe(502)
+        expect(await res.text()).toBe('Authentication provider unavailable')
+        expect(await localAdapter.get('pkce:state-disc-fail')).toBeNull()
+      })
+
+      it('returns 400 instead of throwing when the authorization response is rejected', async () => {
+        const { request } = await setup('state-bad-response')
+        vi.mocked(oauth.discoveryRequest).mockResolvedValue({} as unknown as Response)
+        // The AS advertises RFC 9207 `iss` support, but the callback carries none.
+        vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue({
+          issuer: config.issuer,
+          authorization_response_iss_parameter_supported: true,
+        } as oauth.AuthorizationServer)
+
+        const res = await request()
+
+        expect(res.status).toBe(400)
+        expect(await res.text()).toBe('Authentication failed')
+      })
+
+      it('returns 502 instead of throwing when the token request fails', async () => {
+        const { request } = await setup('state-token-fail')
+        vi.mocked(oauth.discoveryRequest).mockResolvedValue({} as unknown as Response)
+        vi.mocked(oauth.processDiscoveryResponse).mockResolvedValue({ issuer: config.issuer } as oauth.AuthorizationServer)
+        vi.mocked(oauth.authorizationCodeGrantRequest).mockRejectedValue(new TypeError('fetch failed'))
+
+        const res = await request()
+
+        expect(res.status).toBe(502)
+        expect(await res.text()).toBe('Authentication provider unavailable')
+      })
+    })
+
     it('redirects to returnTo after successful login', async () => {
       const state = 'test-state-ret'
       const code = 'test-code'
@@ -815,6 +869,34 @@ describe('OAuth Routes', () => {
       const res = await app.request('/logout', { method: 'POST' })
       expect(res.status).toBe(302)
       expect(res.headers.get('Location')).toBe('/')
+    })
+
+    it('clears the session and cookie and redirects home when discovery fails during logout', async () => {
+      const localAdapter = new MemoryAdapter()
+      const localApp = createBezzie({ ...config, adapter: adapterFactory(localAdapter) }).routes()
+      await localAdapter.set(
+        'session:logout-disc',
+        {
+          _type: 'session',
+          accessToken: 'at',
+          refreshToken: 'rt',
+          expiresAt: Math.floor(Date.now() / 1000) + 3600,
+          createdAt: Math.floor(Date.now() / 1000),
+          user: { sub: 'u1' },
+        } as Session,
+        3600
+      )
+      vi.mocked(oauth.discoveryRequest).mockRejectedValue(new Error('network down'))
+
+      const res = await localApp.request('/logout', {
+        method: 'POST',
+        headers: { Cookie: '__Host-session=logout-disc' },
+      })
+
+      expect(res.status).toBe(302)
+      expect(res.headers.get('Location')).toBe('/')
+      expect(res.headers.get('Set-Cookie')).toMatch(/__Host-session=;/)
+      expect(await localAdapter.get('session:logout-disc')).toBeNull()
     })
 
     it('uses providerOverrides.logoutUrl if provided', async () => {
