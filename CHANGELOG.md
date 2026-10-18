@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.4.2](https://github.com/neilpmas/bezzie/compare/v1.4.1...v1.4.2) (2026-10-18)
+
+
+### Bug Fixes
+
+* end expired sessions without refresh tokens and stop deleting sessions on transient refresh errors ([35f91ee](https://github.com/neilpmas/bezzie/commit/35f91ee58c708d387367b7a4a4fae8028833ebae))
+* harden rate limiter client IP handling and bound in-memory counters ([789b3f1](https://github.com/neilpmas/bezzie/commit/789b3f117c2be4233177e8df192dc9e6db63ae12))
+* reject backslash and control-character returnTo open redirects ([de8ba5e](https://github.com/neilpmas/bezzie/commit/de8ba5e501e84f7ff0de8dcd9077b72fb3c462f5))
+* reject backslash and control-character returnTo open redirects ([0fb3cff](https://github.com/neilpmas/bezzie/commit/0fb3cff59926e510c8a662e015a14ba694dd37bf))
+* return clean errors when discovery or the token request fails in callback and logout ([5f93d87](https://github.com/neilpmas/bezzie/commit/5f93d872672f031cf4f7096957aeea4aef1220a9))
+
 ## [1.4.1](https://github.com/neilpmas/bezzie/compare/v1.4.0...v1.4.1) (2026-09-30)
 
 
