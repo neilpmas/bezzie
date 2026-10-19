@@ -313,10 +313,16 @@ const contributions = await auth.cspContributions()
 // { 'form-action': ['https://tenant.auth0.com'], 'connect-src': [], 'frame-src': [] }
 
 app.use('*', async (c, next) => {
-  const csp = {
+  const csp: Record<string, string[]> = {
     'default-src': ["'self'"],
     'script-src': ["'self'"],
-    ...contributions,
+    'connect-src': ["'self'"], // your app's own fetch/XHR calls
+    'form-action': ["'self'"], // same-origin forms, e.g. a Logout button posting to /auth/logout
+  }
+  // Union each directive. Don't spread `contributions` over your policy:
+  // bezzie's empty connect-src would replace yours.
+  for (const [directive, sources] of Object.entries(contributions)) {
+    csp[directive] = [...new Set([...(csp[directive] ?? []), ...sources])]
   }
   const header = Object.entries(csp)
     .map(([directive, sources]) => `${directive} ${sources.join(' ')}`.trim())
@@ -327,6 +333,12 @@ app.use('*', async (c, next) => {
 ```
 
 `connect-src` and `frame-src` come back empty — in a correct BFF setup, browser-side code never talks to the IdP directly (the token exchange happens server-side, in `/callback`), so there's nothing to add there by default.
+
+**Keep `'self'` in `form-action`.** The contribution lists only the IdP's origin, because that's all bezzie knows about. A `form-action` that names only the IdP blocks your *own* same-origin forms. The classic symptom is a Logout button (`<form method="POST" action="/auth/logout">`) that appears to do nothing: the browser sends the request, receives bezzie's redirect to the IdP, and the policy stops it following. Add `'self'` as in the example above.
+
+**Serving your pages from Workers static assets?** The policy has to reach the HTML response itself, and two things can stop it:
+- `c.header(...)` only reaches responses Hono builds. A response returned straight from `env.ASSETS.fetch()` is raw, so set the header on it explicitly after `next()` (copy it with `new Response(res.body, res)` first, since its headers are immutable).
+- A path that matches a real file, such as `/` serving `index.html`, is served by the asset layer without running your Worker at all. Set `run_worker_first` in `wrangler.toml` so those requests pass through it. Use an array that covers everything except your static folders, for example `run_worker_first = ["/*", "!/assets/*"]`; a bare `["/"]` makes every other path skip the Worker, which breaks `/auth/*` and your API.
 
 **Also set `Referrer-Policy: strict-origin-when-cross-origin`** (or stricter) on your app's own responses. Bezzie can't do this for you — it never serves your HTML — but it matters here specifically: `/callback?code=...&state=...` contains a single-use authorization code, and a loose referrer policy can leak that URL to third-party subresources loaded during the redirect.
 
