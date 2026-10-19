@@ -415,7 +415,7 @@ app.use('/api/*', auth.rateLimiter({ limit: 100, windowSeconds: 60 }))
 
 ## Status
 
-v1.3.0 — stable
+Stable. The current release is on [npm](https://www.npmjs.com/package/bezzie) (see the version badge at the top).
 
 ---
 
