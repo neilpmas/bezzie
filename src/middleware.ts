@@ -1,5 +1,6 @@
 import type { MiddlewareHandler, Context } from 'hono'
 import { getCookie } from 'hono/cookie'
+import { sessionCookieName } from './teardown'
 import * as oauth from 'oauth4webapi'
 import { getAuthorizationServer, type DiscoveryCache } from './discovery'
 import type { Session, SessionAdapter } from './session'
@@ -122,9 +123,7 @@ async function authenticate<TUser extends object = Record<string, unknown>>(
   const sessionStore = config.adapter
 
   // 1. Read the sessionId cookie from the request
-  const secure = config.secureCookies !== false
-  const sessionCookieName = config.cookieName ?? (secure ? '__Host-session' : 'session')
-  const sessionId = getCookie(c, sessionCookieName)
+  const sessionId = getCookie(c, sessionCookieName(config))
 
   // 2. If no cookie → unauthenticated
   if (!sessionId) {

@@ -17,6 +17,8 @@ import { adapterRateLimitStore, createRateLimiter, type RateLimiterOptions, type
 import type { SessionAdapter, SessionAdapterFactory } from './session'
 import { ConfigError } from './errors'
 import { isSafeRelativePath } from './redirect'
+import { endSession, type EndSessionOptions } from './teardown'
+import type { Context } from 'hono'
 
 /**
  * Configuration for Bezzie.
@@ -201,7 +203,7 @@ export interface BezzieConfig<TUser extends object = Record<string, unknown>> {
   onRefresh?: (ctx: RefreshHookContext<TUser>) => Promise<void> | void
 
   /**
-   * Called at /logout after the session is deleted.
+   * Called after the session is deleted, by /logout or `auth.endSession()`.
    * Awaited, but errors are caught and routed to onError — logout always succeeds.
    */
   onLogout?: (ctx: LogoutHookContext<TUser>) => Promise<void> | void
@@ -364,6 +366,22 @@ export interface Bezzie<TUser extends object = Record<string, unknown>> {
    * client IP — pass `keyFn` to override. Fails open on storage errors.
    */
   rateLimiter: (options: RateLimiterOptions) => MiddlewareHandler
+
+  /**
+   * Ends the current request's session from one of your own routes, without
+   * the `/auth/logout` redirect — e.g. in an account-deletion route.
+   *
+   * Deletes the session from the adapter, runs `onLogout`, clears the session
+   * cookie (same name logic as `middleware()`, including a custom
+   * `cookieName`), and by default best-effort revokes the refresh token at
+   * the IdP. It does not end the IdP's own SSO session; send the user through
+   * `/auth/logout` for that. Never throws on IdP trouble, and is a no-op when
+   * there's no session. Return your response via `c.json()`/`c.text()`/etc.
+   * so the cookie-clearing header is kept.
+   *
+   * @returns true if there was a live session to end.
+   */
+  endSession: (c: Context, options?: EndSessionOptions) => Promise<boolean>
 }
 
 /**
@@ -412,6 +430,7 @@ function createBezzie<TUser extends object = Record<string, unknown>>(
     optionalMiddleware: () => optionalMiddleware(resolvedConfig, cache),
     cspContributions: () => cspContributions(resolvedConfig, cache),
     rateLimiter: (options: RateLimiterOptions) => createRateLimiter(adapterRateLimitStore(resolvedConfig.adapter), options),
+    endSession: (c: Context, options?: EndSessionOptions) => endSession(c, resolvedConfig, cache, options),
     cache,
   } as Bezzie<TUser> & { cache: DiscoveryCache }
 }
@@ -433,6 +452,7 @@ export type {
 export type { SessionAdapter, SessionAdapterFactory, PKCEState, Session, StoredSession, RateLimitRecord } from './session'
 export { CloudflareKVAdapter, RedisAdapter, MemoryAdapter } from './session'
 export type { CspContributions } from './csp'
+export type { EndSessionOptions } from './teardown'
 export type { RateLimiterOptions, RateLimitStore } from './ratelimit'
 export { adapterRateLimitStore } from './ratelimit'
 export {
