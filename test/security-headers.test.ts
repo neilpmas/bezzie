@@ -172,3 +172,27 @@ describe('Security headers on auth routes', () => {
     expect(csp).not.toContain("frame-ancestors 'self'")
   })
 })
+
+// #252: an unmatched /auth/* path falls through to the app's own handler. On
+// Workers that is often ASSETS.fetch(), whose Response has immutable headers,
+// so setting the security headers in place threw and turned it into a 500.
+describe('Security headers on fall-through responses with immutable headers', () => {
+  const auth = createBezzie({
+    issuer: 'https://test.auth0.com',
+    clientId: 'test-client-id',
+    clientSecret: 'test-client-secret',
+    adapter: adapterFactory(new MemoryAdapter()),
+    baseUrl: 'https://app.test.com',
+    rateLimit: { enabled: false },
+  })
+  const app = new Hono()
+  app.route('/auth', auth.routes())
+  app.all('*', () => Response.redirect('https://app.test.com/spa', 302))
+
+  it.each(['/auth', '/auth/logout', '/auth/does-not-exist'])('GET %s passes through with headers set', async (path) => {
+    const res = await app.request(path)
+    expect(res.status).toBe(302)
+    expect(res.headers.get('Location')).toBe('https://app.test.com/spa')
+    expectAuthHeaders(res)
+  })
+})

@@ -37,7 +37,16 @@ export function authRoutes<TUser extends object = Record<string, unknown>>(
   // CSP the same way (read-then-append, not blind `.set()`) is unaffected.
   router.use('*', async (c, next) => {
     await next()
-    c.res.headers.set('Cache-Control', 'no-store')
+    // A request that matches no bezzie route falls through to the app's own
+    // handler, which may return a Response with immutable headers (fetch(),
+    // ASSETS.fetch(), Response.redirect()). Copy it before mutating, but only
+    // then, so ordinary responses (and e.g. WebSocket upgrades) are untouched.
+    try {
+      c.res.headers.set('Cache-Control', 'no-store')
+    } catch {
+      c.res = new Response(c.res.body, c.res)
+      c.res.headers.set('Cache-Control', 'no-store')
+    }
     c.res.headers.set('X-Content-Type-Options', 'nosniff')
     c.res.headers.set('X-Frame-Options', 'DENY')
 
