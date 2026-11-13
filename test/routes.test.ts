@@ -871,7 +871,7 @@ describe('OAuth Routes', () => {
       expect(res.headers.get('Location')).toBe('/')
     })
 
-    it('clears the session and cookie and redirects home when discovery fails during logout', async () => {
+    it('clears the session and cookie and returns a 502 explaining the IdP session survives when discovery fails during logout', async () => {
       const localAdapter = new MemoryAdapter()
       const localApp = createBezzie({ ...config, adapter: adapterFactory(localAdapter) }).routes()
       await localAdapter.set(
@@ -893,8 +893,8 @@ describe('OAuth Routes', () => {
         headers: { Cookie: '__Host-session=logout-disc' },
       })
 
-      expect(res.status).toBe(302)
-      expect(res.headers.get('Location')).toBe('/')
+      expect(res.status).toBe(502)
+      expect(await res.text()).toMatch(/signed out of this app.*sign-in provider/)
       expect(res.headers.get('Set-Cookie')).toMatch(/__Host-session=;/)
       expect(await localAdapter.get('session:logout-disc')).toBeNull()
     })

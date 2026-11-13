@@ -6,6 +6,7 @@ import type { Session, PKCEState } from './session'
 import type { ResolvedBezzieConfig } from './index'
 import { adapterRateLimitStore, checkRateLimit, describeWait, getClientIp, warnNoClientIp } from './ratelimit'
 import { isSafeRelativePath } from './redirect'
+import { endLocalSession, revokeRefreshToken, sessionCookieName as getSessionCookieName } from './teardown'
 
 export function authRoutes<TUser extends object = Record<string, unknown>>(
   config: ResolvedBezzieConfig<TUser>,
@@ -15,7 +16,7 @@ export function authRoutes<TUser extends object = Record<string, unknown>>(
   const sessionStore = config.adapter
   const secure = config.secureCookies !== false
   const pkceCookieName = secure ? '__Host-pkce-csrf' : 'pkce-csrf'
-  const sessionCookieName = config.cookieName ?? (secure ? '__Host-session' : 'session')
+  const sessionCookieName = getSessionCookieName(config)
 
   // Every response from this router carries either single-use OAuth flow
   // material (state, code, cookies) or a session cookie. None of it is ever
@@ -358,64 +359,28 @@ export function authRoutes<TUser extends object = Record<string, unknown>>(
   })
 
   router.post(config.routes?.logout ?? '/logout', async (c) => {
-    const sessionId = getCookie(c, sessionCookieName)
-    let idToken: string | undefined
-    let refreshToken: string | undefined
-    let loggedOutUser: Session<TUser>['user'] | undefined
-    if (sessionId) {
-      const session = await sessionStore.get(`session:${sessionId}`)
-      if (session && session._type === 'session') {
-        idToken = (session as Session<TUser>).idToken
-        refreshToken = (session as Session<TUser>).refreshToken
-        loggedOutUser = (session as Session<TUser>).user
-      }
-      await sessionStore.delete(`session:${sessionId}`)
-
-      if (config.onLogout && loggedOutUser) {
-        try {
-          await config.onLogout({ user: loggedOutUser, sessionId, c })
-        } catch (err) {
-          const handler = config.onError ?? ((e: unknown) => console.error('Bezzie: onLogout hook threw:', e instanceof Error ? e.message : String(e)))
-          handler(err, { hook: 'onLogout', c })
-        }
-      }
-    }
-
-    // The local session is already gone, so clear the cookie before anything
-    // that talks to the IdP — a discovery failure below must not leave the
-    // browser holding a cookie for a deleted session.
-    deleteCookie(c, sessionCookieName, {
-      path: '/',
-      secure,
-      httpOnly: true,
-      sameSite: 'Lax',
-    })
+    // Shared with auth.endSession(): delete the session, run onLogout, clear
+    // the cookie. Done before anything that talks to the IdP, so a discovery
+    // failure below can never leave the browser holding a live session.
+    const { idToken, refreshToken } = await endLocalSession(c, config)
 
     let as: oauth.AuthorizationServer
     try {
       as = await getAuthorizationServer(config, cache)
     } catch (err) {
-      // Can't reach the IdP to revoke or end its session, but the local logout
-      // succeeded; send the user home instead of showing them an error.
-      console.error('Bezzie: OIDC discovery failed during logout (local session cleared):', err instanceof Error ? err.message : String(err))
-      return c.redirect('/')
+      // Signed out of this app, but the refresh token can't be revoked and the
+      // IdP's own session can't be ended, so the next login on this browser
+      // could sign straight back in as the same user (a risk on a shared
+      // computer). Say so rather than redirecting home as if all went well.
+      console.error('Bezzie: OIDC discovery failed during logout (local session cleared, IdP session not ended):', err instanceof Error ? err.message : String(err))
+      return c.text(
+        'You have been signed out of this app, but we could not reach your sign-in provider to sign you out there too. ' +
+          'If this is a shared computer, sign out at your provider or close the browser.',
+        502
+      )
     }
 
-    // S12: best-effort revoke the refresh token at the IdP so the tokens are
-    // invalidated server-side, not just locally. Wrapped in try/catch — a
-    // revocation failure must not block the logout redirect.
-    if (refreshToken && as.revocation_endpoint) {
-      try {
-        const client: oauth.Client = { client_id: config.clientId }
-        const clientAuth = oauth.ClientSecretPost(config.clientSecret)
-        const response = await oauth.revocationRequest(as, client, clientAuth, refreshToken, {
-          signal: AbortSignal.timeout(5000),
-        })
-        await oauth.processRevocationResponse(response)
-      } catch (err) {
-        console.error('Bezzie: token revocation failed (continuing with logout):', err)
-      }
-    }
+    await revokeRefreshToken(config, as, refreshToken)
 
     let logoutUrl: URL
     if (config.providerOverrides?.logoutUrl) {

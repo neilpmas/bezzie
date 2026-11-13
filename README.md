@@ -105,7 +105,27 @@ This gives you:
 |---|---|
 | `GET /auth/login` | Redirects to provider, initiates Authorization Code + PKCE flow. Supports `?returnTo=/path` query param for post-login redirect; falls back to `defaultReturnTo` (default `/`). |
 | `GET /auth/callback` | Exchanges code for tokens, stores session in KV, sets cookie. |
-| `POST /auth/logout` | Clears session, clears cookie, redirects to provider logout. |
+| `POST /auth/logout` | Clears session, clears cookie, revokes the refresh token, redirects to provider logout. If the provider can't be reached, the local session is still cleared and it returns a 502 explaining that the user is still signed in at the provider. |
+
+---
+
+## Ending a Session from Your Own Route
+
+`/auth/logout` is for a user clicking "Log out": it ends the session and redirects to the provider. Sometimes one of your own routes needs to end the session itself, with no redirect, e.g. account deletion. Until the browser posts to `/auth/logout`, the session would otherwise stay live, and a background request could recreate data for the deleted user.
+
+Use `auth.endSession(c)`:
+
+```typescript
+app.delete('/api/account', auth.middleware(), async (c) => {
+  await deleteAccount(c.var.user.sub)
+  await auth.endSession(c) // delete the session, clear the cookie, revoke the refresh token
+  return c.json({ deleted: true })
+})
+```
+
+It deletes the session from your adapter, runs `onLogout`, and clears the session cookie, using the same cookie name as `middleware()` (including a custom `cookieName`). By default it also tries to revoke the refresh token at the provider; pass `{ revoke: false }` to skip that. It resolves to `true` if there was a session to end, is a no-op without one, and never throws if the provider is unreachable.
+
+It does not end the provider's own sign-in session; send the user through `/auth/logout` if you need that. Return your response with `c.json()`, `c.text()` and so on rather than `new Response(...)`, so the cookie-clearing header is kept.
 
 ---
 
@@ -261,7 +281,7 @@ adapter: new MemoryAdapter()
 | `providerOverrides` | `object` | — | Hard overrides for provider values (`logoutUrl`, `tokenEndpoint`) |
 | `onLogin` | `(ctx) => void` | — | Called after session is created. Throw to abort login. |
 | `onRefresh` | `(ctx) => void` | — | Called after token refresh. Errors routed to `onError`. |
-| `onLogout` | `(ctx) => void` | — | Called after session is deleted. Errors routed to `onError`. |
+| `onLogout` | `(ctx) => void` | — | Called after the session is deleted, by `/auth/logout` or `auth.endSession()`. Errors routed to `onError`. |
 | `onError` | `(err, ctx) => void` | `console.error` | Handler for non-fatal hook errors |
 | `rateLimit` | `object` | `{ enabled: true, limit: 10, windowSeconds: 120, trustProxyHeaders: false }` (+ optional `store`) | Flood/quota protection on `/login` and `/callback`. See [Security](#security). |
 
