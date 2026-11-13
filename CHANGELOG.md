@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.5.0](https://github.com/neilpmas/bezzie/compare/v1.4.2...v1.5.0) (2026-11-13)
+
+
+### Features
+
+* add auth.endSession(c) and surface IdP failure on logout ([270ed61](https://github.com/neilpmas/bezzie/commit/270ed617aadeafb809ad4782dd66dba996ef0d04))
+* add auth.endSession(c) and surface IdP failure on logout ([b2960f3](https://github.com/neilpmas/bezzie/commit/b2960f39437f6d50a975a334bb0cfae069718372)), closes [#259](https://github.com/neilpmas/bezzie/issues/259)
+
+
+### Bug Fixes
+
+* don't 500 when an unmatched /auth/* path falls through to an immutable response ([f24c0c4](https://github.com/neilpmas/bezzie/commit/f24c0c49b483a84c5cbcdc16fbb80228d475b3e5)), closes [#252](https://github.com/neilpmas/bezzie/issues/252)
+
 ## [1.4.2](https://github.com/neilpmas/bezzie/compare/v1.4.1...v1.4.2) (2026-10-18)
 
 
