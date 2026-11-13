@@ -421,7 +421,7 @@ app.use('/api/*', auth.rateLimiter({ limit: 100, windowSeconds: 60 }))
 | Runtime | Cloudflare Workers |
 | Router | Hono |
 | OAuth | `oauth4webapi` (spec-compliant, no Node.js deps) |
-| Session storage | Cloudflare KV |
+| Session storage | Cloudflare KV, Redis (including Upstash) or in-memory, via pluggable adapters |
 
 ---
 
